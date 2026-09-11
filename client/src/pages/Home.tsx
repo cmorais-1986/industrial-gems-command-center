@@ -35,6 +35,7 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import SimulationDetail from "../components/SimulationDetail";
 
 type Gem = {
   id: string;
@@ -175,6 +176,7 @@ export default function Home() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activityItems, setActivityItems] = useState(activity);
+  const [showSimulationDetail, setShowSimulationDetail] = useState(false);
   const selectedGem = gems.find((gem) => gem.id === selectedGemId) ?? gems[0];
 
   const filteredGems = useMemo(() => {
@@ -277,7 +279,7 @@ export default function Home() {
             </div>
             <div className="hero-actions">
               <div className="last-sync"><span className="sync-dot" /> Última sincronização <strong>agora</strong></div>
-              <button className={`primary-button ${isRunning ? "button-running" : ""}`} onClick={runSimulation}><span className="button-icon"><Play size={14} fill="currentColor" /></span>{isRunning ? "Executando..." : "Nova simulação"}<ChevronDown size={14} /></button>
+              <button className={`primary-button ${isRunning ? "button-running" : ""}`} onClick={() => setShowSimulationDetail(true)}><span className="button-icon"><Play size={14} fill="currentColor" /></span>{isRunning ? "Executando..." : "Nova simulação"}<ChevronDown size={14} /></button>
             </div>
           </section>
 
@@ -329,7 +331,7 @@ export default function Home() {
               <div className="panel-header"><div><span className="section-kicker">SIMULATION LOOP</span><h2>Rodada em destaque</h2></div><Pill tone="amber"><span className="tiny-pulse" /> LIVE</Pill></div>
               <div className="simulation-hero"><div className="sim-topline"><span className="sim-id">SIM-024</span><span className="sim-time"><Clock3 size={13} /> 08:42 min</span></div><h3>Refugo elevado na CNC-02</h3><p>O índice de refugo subiu de <strong>4%</strong> para <strong>11%</strong> nos últimos três turnos.</p><div className="sim-meta"><span><Cpu size={14} /> {selectedGem.name}</span><span><Target size={14} /> DMAIC + SPC + FMEA</span></div></div>
               <div className="pipeline"><div className="pipeline-line"><span style={{ width: "72%" }} /></div>{["Define", "Measure", "Analyze", "Improve", "Control"].map((step, index) => <div className={`pipeline-step ${index < 3 ? "done" : index === 3 ? "current" : ""}`} key={step}><span className="step-dot">{index < 3 ? "✓" : index === 3 ? <span className="step-spinner" /> : index + 1}</span><span>{step}</span></div>)}</div>
-              <div className="simulation-footer"><div className="sim-agent"><div className="mini-avatar"><Bot size={15} /></div><span><strong>Lean Master Agent</strong><small>+ 4 agentes colaborando</small></span></div><button className="run-link" onClick={runSimulation}>{isRunning ? "Executando" : "Abrir simulação"}<ArrowUpRight size={15} /></button></div>
+              <div className="simulation-footer"><div className="sim-agent"><div className="mini-avatar"><Bot size={15} /></div><span><strong>Lean Master Agent</strong><small>+ 4 agentes colaborando</small></span></div><button className="run-link" onClick={() => setShowSimulationDetail(true)}>{isRunning ? "Executando" : "Abrir simulação"}<ArrowUpRight size={15} /></button></div>
             </div>
           </section>
 
@@ -349,6 +351,7 @@ export default function Home() {
           <footer className="app-footer"><span><span className="footer-mark" /> Industrial GEMS Lab · ambiente fictício para simulações de IA</span><span>Construído sobre o <strong>CIOS v3.0</strong></span></footer>
         </div>
       </main>
+      {showSimulationDetail && <SimulationDetail gemName={selectedGem.name} gemCode={selectedGem.code} onClose={() => setShowSimulationDetail(false)} />}
     </div>
   );
 }
