@@ -9,6 +9,7 @@ import {
   listCopilotMessages,
   listGovernanceDecisions,
   listSimulationRuns,
+  updateGovernanceDecision,
 } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -77,6 +78,12 @@ export const appRouter = router({
       rationale: z.string().min(1).max(4000),
       status: z.enum(["Registrada", "Aprovada", "Rejeitada"]).default("Registrada"),
     })).mutation(({ ctx, input }) => createGovernanceDecision(ctx.user.id, input)),
+    update: protectedProcedure.input(z.object({
+      id: z.number().int().positive(),
+      decision: z.string().min(1).max(160),
+      rationale: z.string().min(1).max(4000),
+      status: z.enum(["Registrada", "Aprovada", "Rejeitada"]),
+    })).mutation(({ ctx, input }) => updateGovernanceDecision(ctx.user.id, input.id, input)),
   }),
 });
 

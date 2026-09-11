@@ -151,3 +151,11 @@ export async function createGovernanceDecision(ownerId: number, decision: Omit<I
   const rows = await db.select().from(governanceDecisions).where(eq(governanceDecisions.id, result[0].insertId as number)).limit(1);
   return rows[0];
 }
+
+export async function updateGovernanceDecision(ownerId: number, id: number, decision: Pick<InsertGovernanceDecision, "decision" | "rationale" | "status">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(governanceDecisions).set(decision).where(and(eq(governanceDecisions.id, id), eq(governanceDecisions.ownerId, ownerId)));
+  const rows = await db.select().from(governanceDecisions).where(and(eq(governanceDecisions.id, id), eq(governanceDecisions.ownerId, ownerId))).limit(1);
+  return rows[0];
+}

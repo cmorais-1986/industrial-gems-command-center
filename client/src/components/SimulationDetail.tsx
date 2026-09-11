@@ -19,6 +19,7 @@ import {
   Lightbulb,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   Play,
   RotateCcw,
   Save,
@@ -95,6 +96,22 @@ function RoiPanel({ onRegisterDecision }: { onRegisterDecision?: () => void }) {
   return <div className="roi-panel"><div className="roi-main"><span className="roi-eyebrow">ROI PROJETADO</span><strong>4.2<span>:1</span></strong><Badge tone="green"><ArrowUpRight size={12} /> acima do gate mínimo</Badge></div><div className="roi-metrics"><div><span>Investimento</span><strong>R$ 18.4k</strong></div><div><span>Economia anual</span><strong>R$ 77.2k</strong></div><div><span>Payback</span><strong>2.9 meses</strong></div><div><span>VPL 12 meses</span><strong>R$ 58.8k</strong></div></div><div className="roi-decision"><div className="decision-icon"><CheckCircle2 size={16} /></div><div><strong>Recomendação: aprovar piloto</strong><span>Gate financeiro aprovado pelo CFO Agent · confiança 91%</span></div><button onClick={() => { onRegisterDecision?.(); toast.success("Decisão registrada", { description: "Piloto aprovado para a próxima rodada" }); }}>Registrar decisão <ArrowUpRight size={14} /></button></div></div>;
 }
 
+type GovernanceDecisionRecord = {
+  id: number;
+  decision: string;
+  rationale: string;
+  status: "Registrada" | "Aprovada" | "Rejeitada";
+  createdAt: Date | string;
+};
+
+function GovernancePanel({ decisions, onUpdate }: { decisions: GovernanceDecisionRecord[]; onUpdate: (id: number, decision: string, rationale: string, status: GovernanceDecisionRecord["status"]) => void }) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [draftDecision, setDraftDecision] = useState("");
+  const [draftRationale, setDraftRationale] = useState("");
+  const beginEdit = (item: GovernanceDecisionRecord) => { setEditingId(item.id); setDraftDecision(item.decision); setDraftRationale(item.rationale); };
+  return <section className="governance-panel"><SectionHeader icon={ShieldCheck} eyebrow="GOVERNANCE LEDGER" title="Decisões persistidas" action={<Badge tone="cyan">{decisions.length} registradas</Badge>} /><div className="governance-decision-list">{decisions.map((item) => editingId === item.id ? <div className="governance-decision-row" key={item.id}><div className="governance-edit-grid"><input value={draftDecision} onChange={(event) => setDraftDecision(event.target.value)} aria-label="Título da decisão" /><textarea value={draftRationale} onChange={(event) => setDraftRationale(event.target.value)} aria-label="Justificativa da decisão" /><div className="governance-decision-actions"><button onClick={() => { onUpdate(item.id, draftDecision, draftRationale, item.status); setEditingId(null); }}><Check size={12} /> Salvar</button><button className="reject" onClick={() => setEditingId(null)}><X size={12} /> Cancelar</button></div></div></div> : <div className="governance-decision-row" key={item.id}><div className="governance-decision-top"><strong>{item.decision}</strong><Badge tone={item.status === "Aprovada" ? "green" : item.status === "Rejeitada" ? "red" : "amber"}>{item.status}</Badge></div><p>{item.rationale}</p><div className="governance-decision-actions"><button onClick={() => beginEdit(item)}><Pencil size={12} /> Editar</button>{item.status !== "Aprovada" && <button onClick={() => onUpdate(item.id, item.decision, item.rationale, "Aprovada")}><Check size={12} /> Aprovar</button>}{item.status !== "Rejeitada" && <button className="reject" onClick={() => onUpdate(item.id, item.decision, item.rationale, "Rejeitada")}><X size={12} /> Rejeitar</button>}</div></div>)}{decisions.length === 0 && <span className="governance-empty">Nenhuma decisão foi registrada para esta simulação.</span>}</div></section>;
+}
+
 function AiAssistant({ onClose, simulationId }: { onClose: () => void; simulationId: string }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Array<{ role: "assistant" | "user"; text: string }>>([]);
@@ -163,6 +180,7 @@ export default function SimulationDetail({ gemName, gemCode, onClose }: Simulati
   const activeSimulationId = history.find((item) => item.scenario === scenario)?.id ?? history[0]?.id ?? "SIM-024";
   const { data: governanceDecisions } = trpc.governance.list.useQuery({ simulationId: activeSimulationId });
   const registerDecision = trpc.governance.create.useMutation({ onSuccess: () => trpcUtils.governance.list.invalidate({ simulationId: activeSimulationId }) });
+  const updateDecision = trpc.governance.update.useMutation({ onSuccess: () => { trpcUtils.governance.list.invalidate({ simulationId: activeSimulationId }); toast.success("Decisão atualizada", { description: "O ledger de governança foi sincronizado." }); } });
 
   useEffect(() => {
     if (!storedRuns) return;
@@ -180,9 +198,32 @@ export default function SimulationDetail({ gemName, gemCode, onClose }: Simulati
     registerDecision.mutate({ simulationId: activeSimulationId, decision: "APROVAR PILOTO", rationale: "Troca preventiva de ferramenta de 480 para 360 ciclos; gate financeiro aprovado pelo CFO Agent.", status: "Aprovada" });
   };
 
+  const saveGovernanceUpdate = (id: number, decision: string, rationale: string, status: "Registrada" | "Aprovada" | "Rejeitada") => {
+    updateDecision.mutate({ id, decision, rationale, status });
+  };
+
   const exportPdf = () => {
     toast.info("Relatório preparado para PDF", { description: "Na janela de impressão, selecione ‘Salvar como PDF’." });
     window.setTimeout(() => window.print(), 350);
+  };
+
+  const exportCsv = () => {
+    const escapeCell = (value: string) => `"${value.replaceAll('"', '""')}"`;
+    const rows = filteredHistory.map((run) => [run.id, run.scenario, run.gemCode, run.gem, run.process, run.status, run.roi, run.date].map(escapeCell).join(";"));
+    const csv = ["ID;Cenário;GEM;Ambiente;Processo;Status;ROI;Data", ...rows].join("\n");
+    const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `industrial-gems-historico-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("CSV exportado", { description: `${filteredHistory.length} execução(ões) filtrada(s).` });
+  };
+
+  const exportHistoryPdf = () => {
+    document.body.classList.add("print-history-only");
+    toast.info("Histórico pronto para PDF", { description: "Na janela de impressão, selecione ‘Salvar como PDF’." });
+    window.setTimeout(() => { window.print(); document.body.classList.remove("print-history-only"); }, 350);
   };
 
   const executeScenario = () => {
@@ -216,8 +257,8 @@ export default function SimulationDetail({ gemName, gemCode, onClose }: Simulati
       {activeTab === "SPC & Capacidade" && <section className="detail-card tab-expanded"><SectionHeader icon={Gauge} eyebrow="STATISTICAL PROCESS CONTROL" title="SPC & capacidade do processo" /><SpcChart /><div className="expanded-stats"><div><span>Cp</span><strong>0.91</strong><small>potencial</small></div><div><span>Cpk</span><strong className="negative-text">0.82</strong><small>realizado</small></div><div><span>σ do processo</span><strong>2.1%</strong><small>desvio padrão</small></div><div><span>Fora de controle</span><strong className="negative-text">12</strong><small>observações</small></div></div></section>}
       {activeTab === "Pareto" && <section className="detail-card tab-expanded"><SectionHeader icon={BarChart3} eyebrow="ANALYSE ENGINE" title="Pareto de causas de refugo" /><ParetoChart /><div className="pareto-explanation"><strong>Regra 80/20:</strong> as três primeiras causas concentram <span>80% do impacto</span>. A recomendação prioriza desgaste de ferramenta e setup porque possuem maior controlabilidade e ROI de intervenção.</div></section>}
       {activeTab === "FMEA" && <section className="detail-card tab-expanded"><SectionHeader icon={ShieldCheck} eyebrow="RISK ENGINEERING" title="FMEA dinâmica da CNC-02" /><FmeaTable /><div className="fmea-action-grid"><div><span>Risco prioritário</span><strong>Desgaste da ferramenta</strong></div><div><span>RPN atual</span><strong className="rpn-high">280</strong></div><div><span>Ação recomendada</span><strong>Troca preventiva a cada 360 ciclos</strong></div></div></section>}
-      {activeTab === "ROI & Decisão" && <section className="detail-card tab-expanded"><SectionHeader icon={TrendingUp} eyebrow="FINANCIAL GATE" title="Caso econômico e decisão" /><RoiPanel onRegisterDecision={saveDecision} /><div className="decision-audit"><Check size={15} /><span>Validação registrada: CFO Agent · Lean Master Agent · Human Gate · {governanceDecisions?.length ?? 0} decisão(ões) persistida(s)</span></div></section>}
-      <section className="detail-card history-card"><div className="history-head"><SectionHeader icon={History} eyebrow="EXPERIMENT LOG" title="Histórico de execuções" /><div className="history-filters"><select aria-label="Filtrar por GEM" value={gemFilter} onChange={(event) => setGemFilter(event.target.value)}><option value="Todos">Todos os GEMS</option><option value="GEM-01">GEM-01 · Scorpios</option><option value="GEM-02">GEM-02 · Forja</option><option value="GEM-03">GEM-03 · Helvetia</option><option value="GEM-04">GEM-04 · CyberNetics</option></select><select aria-label="Filtrar por processo" value={processFilter} onChange={(event) => setProcessFilter(event.target.value)}><option value="Todos">Todos os processos</option><option>Usinagem CNC</option><option>Pintura E-coat</option><option>Prensa hidráulica</option><option>Inspeção automatizada</option></select><select aria-label="Filtrar por período" value={periodFilter} onChange={(event) => setPeriodFilter(event.target.value)}><option value="Todos">Todo período</option><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select><select aria-label="Filtrar por status" value={historyFilter} onChange={(event) => setHistoryFilter(event.target.value)}><option>Todos</option><option>Concluída</option><option>Em revisão</option><option>Executando</option></select></div></div><div className="history-list">{filteredHistory.map((run) => <div className="history-row" key={run.id}><div className={`history-run-icon ${run.accent}`}><FlaskConical size={15} /></div><div className="history-run-main"><strong>{run.scenario}</strong><span>{run.id} · {run.gem} · {run.process} · {run.date}</span></div><Badge tone={run.status === "Concluída" ? "green" : run.status === "Executando" ? "amber" : "purple"}>{run.status === "Executando" && <span className="tiny-pulse" />}{run.status}</Badge><span className="history-roi">{run.roi}</span><button className="history-open" onClick={() => toast.info("Execução selecionada", { description: `${run.id} · ${run.scenario}` })}>Abrir <ArrowUpRight size={13} /></button></div>)}</div>{filteredHistory.length === 0 && <div className="history-empty">Nenhuma execução corresponde aos filtros selecionados.</div>}</section>
+      {activeTab === "ROI & Decisão" && <section className="detail-card tab-expanded"><SectionHeader icon={TrendingUp} eyebrow="FINANCIAL GATE" title="Caso econômico e decisão" /><RoiPanel onRegisterDecision={saveDecision} /><div className="decision-audit"><Check size={15} /><span>Validação registrada: CFO Agent · Lean Master Agent · Human Gate · {governanceDecisions?.length ?? 0} decisão(ões) persistida(s)</span></div><GovernancePanel decisions={(governanceDecisions ?? []) as GovernanceDecisionRecord[]} onUpdate={saveGovernanceUpdate} /></section>}
+      <section className="detail-card history-card"><div className="history-head"><SectionHeader icon={History} eyebrow="EXPERIMENT LOG" title="Histórico de execuções" /><div className="history-filters"><select aria-label="Filtrar por GEM" value={gemFilter} onChange={(event) => setGemFilter(event.target.value)}><option value="Todos">Todos os GEMS</option><option value="GEM-01">GEM-01 · Scorpios</option><option value="GEM-02">GEM-02 · Forja</option><option value="GEM-03">GEM-03 · Helvetia</option><option value="GEM-04">GEM-04 · CyberNetics</option></select><select aria-label="Filtrar por processo" value={processFilter} onChange={(event) => setProcessFilter(event.target.value)}><option value="Todos">Todos os processos</option><option>Usinagem CNC</option><option>Pintura E-coat</option><option>Prensa hidráulica</option><option>Inspeção automatizada</option></select><select aria-label="Filtrar por período" value={periodFilter} onChange={(event) => setPeriodFilter(event.target.value)}><option value="Todos">Todo período</option><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select><select aria-label="Filtrar por status" value={historyFilter} onChange={(event) => setHistoryFilter(event.target.value)}><option>Todos</option><option>Concluída</option><option>Em revisão</option><option>Executando</option></select><button className="history-export-button" onClick={exportCsv}><Download size={12} /> CSV</button><button className="history-export-button" onClick={exportHistoryPdf}><Download size={12} /> PDF</button></div></div><div className="history-list">{filteredHistory.map((run) => <div className="history-row" key={run.id}><div className={`history-run-icon ${run.accent}`}><FlaskConical size={15} /></div><div className="history-run-main"><strong>{run.scenario}</strong><span>{run.id} · {run.gem} · {run.process} · {run.date}</span></div><Badge tone={run.status === "Concluída" ? "green" : run.status === "Executando" ? "amber" : "purple"}>{run.status === "Executando" && <span className="tiny-pulse" />}{run.status}</Badge><span className="history-roi">{run.roi}</span><button className="history-open" onClick={() => toast.info("Execução selecionada", { description: `${run.id} · ${run.scenario}` })}>Abrir <ArrowUpRight size={13} /></button></div>)}</div>{filteredHistory.length === 0 && <div className="history-empty">Nenhuma execução corresponde aos filtros selecionados.</div>}</section>
     </div>
   </div></div>;
 }

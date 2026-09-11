@@ -70,4 +70,12 @@ describe("authenticated simulation workspace", () => {
     expect(messages.every((message) => message.ownerId === authenticatedUser.id)).toBe(true);
     expect(decisions.every((decision) => decision.ownerId === authenticatedUser.id)).toBe(true);
   });
+
+  it("validates governance updates and blocks unauthenticated updates", async () => {
+    const publicCaller = appRouter.createCaller(createContext());
+    await expect(publicCaller.governance.update({ id: 1, decision: "A", rationale: "B", status: "Aprovada" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+
+    const caller = appRouter.createCaller(createContext(authenticatedUser));
+    await expect(caller.governance.update({ id: 0, decision: "A", rationale: "B", status: "Aprovada" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });

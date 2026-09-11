@@ -20,6 +20,8 @@ import {
   Layers3,
   LayoutDashboard,
   Leaf,
+  LogOut,
+  Mail,
   Menu,
   MoreHorizontal,
   Play,
@@ -31,6 +33,7 @@ import {
   Sparkles,
   Target,
   TerminalSquare,
+  UserRound,
   TrendingUp,
   Wrench,
   X,
@@ -173,7 +176,7 @@ function AppMark() {
 }
 
 export default function Home() {
-  const { user, loading, isAuthenticated } = useAuth();
+  const { user, loading, isAuthenticated, logout } = useAuth();
   const [activeNav, setActiveNav] = useState("Command Center");
   const [selectedGemId, setSelectedGemId] = useState("scorpios");
   const [isRunning, setIsRunning] = useState(false);
@@ -181,6 +184,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [activityItems, setActivityItems] = useState(activity);
   const [showSimulationDetail, setShowSimulationDetail] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const selectedGem = gems.find((gem) => gem.id === selectedGemId) ?? gems[0];
   const filteredGems = useMemo(() => {
     const normalized = query.toLowerCase().trim();
@@ -212,6 +216,16 @@ export default function Home() {
     setActiveNav(label);
     setIsSidebarOpen(false);
     if (label !== "Command Center") toast.info(`${label} selecionado`, { description: "Módulo visual em modo de simulação" });
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setShowProfile(false);
+      toast.success("Sessão encerrada", { description: "Até a próxima simulação." });
+    } catch {
+      toast.error("Não foi possível encerrar a sessão");
+    }
   };
 
   return (
@@ -262,10 +276,10 @@ export default function Home() {
             <div className="cognitive-card-meta"><span>8 camadas</span><span>•</span><span>24 agentes</span></div>
             <div className="cognitive-progress"><span style={{ width: "76%" }} /></div>
           </div>
-          <button className="profile-row" onClick={() => toast.info("Perfil autenticado", { description: user?.email ?? user?.name ?? "Usuário Manus" })}>
-            <div className="avatar">CA</div>
+          <button className="profile-row" onClick={() => setShowProfile(true)}>
+            <div className="avatar">{(user?.name ?? "CA").slice(0, 2).toUpperCase()}</div>
             <div className="profile-text"><strong>{user?.name ?? "Usuário autenticado"}</strong><span>{user?.email ?? "Sessão Manus ativa"}</span></div>
-            <MoreHorizontal size={17} className="muted-icon" />
+            <UserRound size={17} className="muted-icon" />
           </button>
         </div>
       </aside>
@@ -362,6 +376,7 @@ export default function Home() {
           <footer className="app-footer"><span><span className="footer-mark" /> Industrial GEMS Lab · ambiente fictício para simulações de IA</span><span>Construído sobre o <strong>CIOS v3.0</strong></span></footer>
         </div>
       </main>
+      {showProfile && <div className="profile-overlay" role="dialog" aria-modal="true" aria-label="Perfil do usuário"><section className="profile-modal"><div className="profile-modal-head"><div><span className="section-kicker">IDENTIDADE E ACESSO</span><h2>Meu perfil</h2></div><button className="profile-close" onClick={() => setShowProfile(false)} aria-label="Fechar perfil"><X size={18} /></button></div><div className="profile-hero"><div className="profile-large-avatar">{(user?.name ?? "CA").slice(0, 2).toUpperCase()}</div><div><strong>{user?.name ?? "Usuário autenticado"}</strong><span>Conta Manus · dados isolados por usuário</span></div></div><div className="profile-fields"><div><UserRound size={15} /><span>Nome</span><strong>{user?.name ?? "Não informado"}</strong></div><div><Mail size={15} /><span>E-mail</span><strong>{user?.email ?? "Não informado"}</strong></div><div><ShieldCheck size={15} /><span>Permissão</span><strong>{user?.role === "admin" ? "Administrador" : "Usuário do laboratório"}</strong></div></div><div className="profile-modal-foot"><small>Suas simulações, mensagens e decisões são privadas.</small><button className="logout-button" onClick={handleLogout}><LogOut size={15} /> Sair da conta</button></div></section></div>}
       {showSimulationDetail && <SimulationDetail gemName={selectedGem.name} gemCode={selectedGem.code} onClose={() => setShowSimulationDetail(false)} />}
     </div>
   );
