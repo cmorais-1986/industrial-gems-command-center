@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { trpc } from "@/lib/trpc";
 import {
   ArrowDownRight,
   ArrowLeft,
@@ -116,6 +117,11 @@ function ComparePanel({ history, onClose }: { history: HistoryRun[]; onClose: ()
   return <section className="compare-card"><div className="compare-header"><div><span className="detail-eyebrow">SCENARIO COMPARISON</span><h3>Comparar resultados lado a lado</h3><p>Selecione duas execuções concluídas para identificar ganhos, riscos e diferenças de processo.</p></div><button className="ai-close" onClick={onClose}><X size={16} /></button></div><div className="compare-selectors"><label><span>Rodada A</span><select value={left?.id} onChange={(event) => setLeftId(event.target.value)}>{completed.map((item) => <option key={item.id} value={item.id}>{item.id} · {item.scenario}</option>)}</select></label><div className="compare-vs">VS</div><label><span>Rodada B</span><select value={right?.id} onChange={(event) => setRightId(event.target.value)}>{completed.map((item) => <option key={item.id} value={item.id}>{item.id} · {item.scenario}</option>)}</select></label></div><div className="compare-columns"><div className="compare-column compare-a"><div className="compare-column-head"><Badge tone="cyan">RODADA A</Badge><strong>{left?.scenario}</strong><span>{left?.id} · {left?.date}</span></div><div className="compare-metric"><span>Refugo</span><strong>4.0%</strong><small>baseline</small></div><div className="compare-metric"><span>Cpk</span><strong>1.41</strong><small className="good">acima do gate</small></div><div className="compare-metric"><span>ROI</span><strong>{left?.roi}</strong><small>projetado</small></div></div><div className="compare-delta"><div><ArrowUpRight size={13} /><strong>-6.0 pp</strong><span>refugo</span></div><div><TrendingUp size={13} /><strong>+0.59</strong><span>Cpk</span></div><div><GitCompare size={13} /><strong>+1.3x</strong><span>ROI</span></div></div><div className="compare-column compare-b"><div className="compare-column-head"><Badge tone="amber">RODADA B</Badge><strong>{right?.scenario}</strong><span>{right?.id} · {right?.date}</span></div><div className="compare-metric"><span>Refugo</span><strong>10.0%</strong><small className="warn">acima da meta</small></div><div className="compare-metric"><span>Cpk</span><strong className="warn">0.82</strong><small className="warn">abaixo do gate</small></div><div className="compare-metric"><span>ROI</span><strong>{right?.roi}</strong><small>projetado</small></div></div></div><div className="compare-insight"><Sparkles size={14} /><span><strong>Leitura do Analyst Agent:</strong> a Rodada A é 60% mais estável e preserva capacidade. A diferença sugere que a troca preventiva de ferramenta deve ser mantida como controle padrão.</span></div></section>;
 }
 
+function mapStoredRun(run: { id: string; scenario: string; gemName: string; status: HistoryRun["status"]; roi: string; createdAt: Date | string }): HistoryRun {
+  const date = new Date(run.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return { id: run.id, scenario: run.scenario, gem: run.gemName.split(" ")[0], status: run.status, roi: run.roi, date, accent: run.status === "Concluída" ? "green" : run.status === "Em revisão" ? "purple" : "amber" };
+}
+
 export default function SimulationDetail({ gemName, gemCode, onClose }: SimulationDetailProps) {
   const [activeTab, setActiveTab] = useState("Overview");
   const [scenario, setScenario] = useState("Refugo elevado na CNC-02");
@@ -129,6 +135,22 @@ export default function SimulationDetail({ gemName, gemCode, onClose }: Simulati
   const [showAssistant, setShowAssistant] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("Todos");
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
+  const { data: storedRuns } = trpc.simulations.list.useQuery();
+  const trpcUtils = trpc.useUtils();
+  const bootstrapRuns = trpc.simulations.bootstrap.useMutation({ onSuccess: () => trpcUtils.simulations.list.invalidate() });
+  const createRun = trpc.simulations.create.useMutation();
+  const completeRun = trpc.simulations.complete.useMutation({ onSuccess: () => trpcUtils.simulations.list.invalidate() });
+
+  useEffect(() => {
+    if (!storedRuns) return;
+    if (storedRuns.length === 0 && !hasBootstrapped) {
+      setHasBootstrapped(true);
+      bootstrapRuns.mutate();
+      return;
+    }
+    if (storedRuns.length > 0) setHistory(storedRuns.map(mapStoredRun));
+  }, [storedRuns, hasBootstrapped]);
 
   const filteredHistory = useMemo(() => historyFilter === "Todos" ? history : history.filter((item) => item.status === historyFilter), [history, historyFilter]);
 
@@ -140,10 +162,15 @@ export default function SimulationDetail({ gemName, gemCode, onClose }: Simulati
   const executeScenario = () => {
     if (!scenario.trim()) { toast.error("Informe um nome para o cenário"); return; }
     setIsExecuting(true);
-    const newRun: HistoryRun = { id: `SIM-${String(25 + history.length).padStart(3, "0")}`, scenario, gem: gemName.split(" ")[0], status: "Executando", roi: "—", date: "agora", accent: "amber" };
-    setHistory((items) => [newRun, ...items]);
-    toast.success("Cenário parametrizado criado", { description: `${newRun.id} · gerando dados sintéticos` });
-    window.setTimeout(() => { setIsExecuting(false); setHistory((items) => items.map((item) => item.id === newRun.id ? { ...item, status: "Concluída", roi: "4.6 : 1", accent: "green" } : item)); toast.success("Execução concluída", { description: "SPC, Pareto, FMEA e ROI atualizados" }); }, 1700);
+    createRun.mutate({ gemCode, gemName, scenario, process, baselinePct: Number(baseline), targetPct: Number(target), windowDays: Number(days), failureMode: "Desgaste progressivo" }, {
+      onSuccess: (created) => {
+        const newRun = mapStoredRun(created);
+        setHistory((items) => [newRun, ...items.filter((item) => item.id !== newRun.id)]);
+        toast.success("Cenário persistido", { description: `${newRun.id} · gerando dados sintéticos` });
+        window.setTimeout(() => completeRun.mutate({ id: created.id, roi: "4.6 : 1", resultSummary: "SPC, Pareto e FMEA atualizados após execução parametrizada." }, { onSuccess: (completed) => { setIsExecuting(false); setHistory((items) => items.map((item) => item.id === completed.id ? mapStoredRun(completed) : item)); toast.success("Execução concluída", { description: "Resultados salvos no banco de dados" }); }, onError: () => { setIsExecuting(false); toast.error("Não foi possível salvar os resultados"); } }), 1700);
+      },
+      onError: () => { setIsExecuting(false); toast.error("Não foi possível persistir a simulação", { description: "Verifique a conexão com o banco de dados" }); },
+    });
   };
 
   return <div className="detail-overlay"><div className="detail-shell">
