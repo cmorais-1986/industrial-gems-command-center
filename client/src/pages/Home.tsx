@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { startLogin } from "@/const";
 import {
   Activity,
   AlertTriangle,
@@ -33,6 +35,7 @@ import {
   Wrench,
   X,
   Zap,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import SimulationDetail from "../components/SimulationDetail";
@@ -170,6 +173,7 @@ function AppMark() {
 }
 
 export default function Home() {
+  const { user, loading, isAuthenticated } = useAuth();
   const [activeNav, setActiveNav] = useState("Command Center");
   const [selectedGemId, setSelectedGemId] = useState("scorpios");
   const [isRunning, setIsRunning] = useState(false);
@@ -178,12 +182,19 @@ export default function Home() {
   const [activityItems, setActivityItems] = useState(activity);
   const [showSimulationDetail, setShowSimulationDetail] = useState(false);
   const selectedGem = gems.find((gem) => gem.id === selectedGemId) ?? gems[0];
-
   const filteredGems = useMemo(() => {
     const normalized = query.toLowerCase().trim();
     if (!normalized) return gems;
     return gems.filter((gem) => `${gem.name} ${gem.sector} ${gem.focus}`.toLowerCase().includes(normalized));
   }, [query]);
+
+  if (loading) {
+    return <div className="auth-gate"><Loader2 size={24} className="auth-spinner" /><span>Validando acesso ao CIOS...</span></div>;
+  }
+
+  if (!isAuthenticated) {
+    return <div className="auth-gate"><div className="auth-gate-mark"><AppMark /></div><span className="auth-gate-kicker">INDUSTRIAL GEMS · CIOS v3.0</span><h1>Acesso autenticado obrigatório<span>.</span></h1><p>Entre com sua conta Manus para acessar simulações, histórico, Copiloto e decisões de governança isolados por usuário.</p><button className="auth-gate-button" onClick={() => startLogin()}><ShieldCheck size={16} /> Entrar no laboratório</button><small>Ambiente fictício para simulações de aplicação de IA industrial.</small></div>;
+  }
 
   const runSimulation = () => {
     if (isRunning) return;
@@ -210,7 +221,7 @@ export default function Home() {
           <div className="brand-row">
             <AppMark />
             <div>
-              <div className="brand-name">Industrial <span>GEMS</span></div>
+            <div className="brand-name">Industrial <span>GEMS</span></div>
               <div className="brand-subtitle">Cognitive Operations Lab</div>
             </div>
             <button className="mobile-close" onClick={() => setIsSidebarOpen(false)} aria-label="Fechar menu"><X size={18} /></button>
@@ -251,9 +262,9 @@ export default function Home() {
             <div className="cognitive-card-meta"><span>8 camadas</span><span>•</span><span>24 agentes</span></div>
             <div className="cognitive-progress"><span style={{ width: "76%" }} /></div>
           </div>
-          <button className="profile-row" onClick={() => toast.info("Perfil do arquiteto", { description: "Cícero Artanio Azevedo Morais · AI Industrial Systems Architect" })}>
+          <button className="profile-row" onClick={() => toast.info("Perfil autenticado", { description: user?.email ?? user?.name ?? "Usuário Manus" })}>
             <div className="avatar">CA</div>
-            <div className="profile-text"><strong>Cícero Artanio</strong><span>Architect · MBB</span></div>
+            <div className="profile-text"><strong>{user?.name ?? "Usuário autenticado"}</strong><span>{user?.email ?? "Sessão Manus ativa"}</span></div>
             <MoreHorizontal size={17} className="muted-icon" />
           </button>
         </div>

@@ -27,6 +27,7 @@ export type InsertUser = typeof users.$inferInsert;
 
 export const simulationRuns = mysqlTable("simulation_runs", {
   id: varchar("id", { length: 32 }).primaryKey(),
+  ownerId: int("ownerId").notNull().default(0),
   gemCode: varchar("gemCode", { length: 32 }).notNull(),
   gemName: varchar("gemName", { length: 160 }).notNull(),
   scenario: varchar("scenario", { length: 255 }).notNull(),
@@ -44,3 +45,28 @@ export const simulationRuns = mysqlTable("simulation_runs", {
 
 export type SimulationRun = typeof simulationRuns.$inferSelect;
 export type InsertSimulationRun = typeof simulationRuns.$inferInsert;
+
+export const copilotMessages = mysqlTable("copilot_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull(),
+  simulationId: varchar("simulationId", { length: 32 }).notNull(),
+  role: mysqlEnum("role", ["user", "assistant"]).notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CopilotMessage = typeof copilotMessages.$inferSelect;
+export type InsertCopilotMessage = typeof copilotMessages.$inferInsert;
+
+export const governanceDecisions = mysqlTable("governance_decisions", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull(),
+  simulationId: varchar("simulationId", { length: 32 }).notNull(),
+  decision: varchar("decision", { length: 160 }).notNull(),
+  rationale: text("rationale").notNull(),
+  status: mysqlEnum("status", ["Registrada", "Aprovada", "Rejeitada"]).default("Registrada").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type GovernanceDecision = typeof governanceDecisions.$inferSelect;
+export type InsertGovernanceDecision = typeof governanceDecisions.$inferInsert;

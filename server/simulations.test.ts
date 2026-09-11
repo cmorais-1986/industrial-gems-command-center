@@ -2,23 +2,42 @@ import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 
-function createPublicContext(): TrpcContext {
+function createContext(user: TrpcContext["user"] = null): TrpcContext {
   return {
-    user: null,
+    user,
     req: { protocol: "https", headers: {} } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
   };
 }
 
-describe("simulations router", () => {
-  it("returns a list from the persistent simulation store", async () => {
-    const caller = appRouter.createCaller(createPublicContext());
-    const result = await caller.simulations.list();
+const authenticatedUser = {
+  id: 987654,
+  openId: "simulation-test-user",
+  email: "simulation-test@example.com",
+  name: "Simulation Test User",
+  loginMethod: "manus",
+  role: "user" as const,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  lastSignedIn: new Date(),
+};
+
+describe("authenticated simulation workspace", () => {
+  it("rejects unauthenticated access to simulation data", async () => {
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.simulations.list()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.copilot.list({ simulationId: "SIM-024" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("returns a list from the persistent store for the current owner", async () => {
+    const caller = appRouter.createCaller(createContext(authenticatedUser));
+    const result = await caller.simulations.list({ status: "Concluída" });
     expect(Array.isArray(result)).toBe(true);
+    expect(result.every((run) => run.ownerId === authenticatedUser.id)).toBe(true);
   });
 
   it("rejects invalid scenario parameters before touching the database", async () => {
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createContext(authenticatedUser));
     await expect(caller.simulations.create({
       gemCode: "GEM-01",
       gemName: "Scorpios Metalworks",
@@ -32,11 +51,23 @@ describe("simulations router", () => {
   });
 
   it("rejects malformed completion payloads", async () => {
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createContext(authenticatedUser));
     await expect(caller.simulations.complete({
       id: "SIM-024",
       roi: "",
       resultSummary: "resultado",
     })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("loads owner-scoped copiloto and governance histories", async () => {
+    const caller = appRouter.createCaller(createContext(authenticatedUser));
+    const [messages, decisions] = await Promise.all([
+      caller.copilot.list({ simulationId: "SIM-024" }),
+      caller.governance.list({ simulationId: "SIM-024" }),
+    ]);
+    expect(Array.isArray(messages)).toBe(true);
+    expect(Array.isArray(decisions)).toBe(true);
+    expect(messages.every((message) => message.ownerId === authenticatedUser.id)).toBe(true);
+    expect(decisions.every((decision) => decision.ownerId === authenticatedUser.id)).toBe(true);
   });
 });

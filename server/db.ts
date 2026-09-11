@@ -1,11 +1,19 @@
-import { desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertSimulationRun, InsertUser, simulationRuns, users } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import {
+  InsertCopilotMessage,
+  InsertGovernanceDecision,
+  InsertSimulationRun,
+  InsertUser,
+  copilotMessages,
+  governanceDecisions,
+  simulationRuns,
+  users,
+} from "../drizzle/schema";
+import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -19,104 +27,127 @@ export async function getDb() {
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
-
+  if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
   if (!db) {
     console.warn("[Database] Cannot upsert user: database not available");
     return;
   }
 
-  try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
+  const values: InsertUser = { openId: user.openId };
+  const updateSet: Record<string, unknown> = {};
+  const textFields = ["name", "email", "loginMethod"] as const;
+  type TextField = (typeof textFields)[number];
+  const assignNullable = (field: TextField) => {
+    const value = user[field];
+    if (value === undefined) return;
+    const normalized = value ?? null;
+    values[field] = normalized;
+    updateSet[field] = normalized;
+  };
+  textFields.forEach(assignNullable);
 
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
+  if (user.lastSignedIn !== undefined) {
+    values.lastSignedIn = user.lastSignedIn;
+    updateSet.lastSignedIn = user.lastSignedIn;
   }
+  if (user.role !== undefined) {
+    values.role = user.role;
+    updateSet.role = user.role;
+  } else if (user.openId === ENV.ownerOpenId) {
+    values.role = "admin";
+    updateSet.role = "admin";
+  }
+  if (!values.lastSignedIn) values.lastSignedIn = new Date();
+  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
+
+  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
 
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
+  if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
-  return result.length > 0 ? result[0] : undefined;
+  return result[0];
 }
 
-export async function listSimulationRuns(limit = 50) {
+type SimulationListFilters = {
+  ownerId: number;
+  gemCode?: string;
+  process?: string;
+  status?: InsertSimulationRun["status"];
+  from?: Date;
+  to?: Date;
+};
+
+export async function listSimulationRuns(filters: SimulationListFilters) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(simulationRuns).orderBy(desc(simulationRuns.createdAt)).limit(limit);
+  const conditions = [eq(simulationRuns.ownerId, filters.ownerId)];
+  if (filters.gemCode) conditions.push(eq(simulationRuns.gemCode, filters.gemCode));
+  if (filters.process) conditions.push(eq(simulationRuns.process, filters.process));
+  if (filters.status) conditions.push(eq(simulationRuns.status, filters.status));
+  if (filters.from) conditions.push(gte(simulationRuns.createdAt, filters.from));
+  if (filters.to) conditions.push(lte(simulationRuns.createdAt, filters.to));
+  return db.select().from(simulationRuns).where(and(...conditions)).orderBy(desc(simulationRuns.createdAt)).limit(100);
 }
 
-export async function createSimulationRun(run: Omit<InsertSimulationRun, "id"> & { id?: string }) {
+export async function createSimulationRun(ownerId: number, run: Omit<InsertSimulationRun, "id" | "ownerId"> & { id?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
-  const id = run.id ?? `SIM-${Date.now()}`;
-  await db.insert(simulationRuns).values({ ...run, id });
-  const result = await db.select().from(simulationRuns).where(eq(simulationRuns.id, id)).limit(1);
+  const id = run.id ?? `SIM-${Date.now()}-${ownerId}`;
+  await db.insert(simulationRuns).values({ ...run, id, ownerId });
+  const result = await db.select().from(simulationRuns).where(and(eq(simulationRuns.id, id), eq(simulationRuns.ownerId, ownerId))).limit(1);
   return result[0];
 }
 
-export async function completeSimulationRun(id: string, roi: string, resultSummary: string) {
+export async function completeSimulationRun(ownerId: number, id: string, roi: string, resultSummary: string) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
-  await db.update(simulationRuns).set({ status: "Concluída", roi, resultSummary }).where(eq(simulationRuns.id, id));
-  const result = await db.select().from(simulationRuns).where(eq(simulationRuns.id, id)).limit(1);
+  await db.update(simulationRuns).set({ status: "Concluída", roi, resultSummary }).where(and(eq(simulationRuns.id, id), eq(simulationRuns.ownerId, ownerId)));
+  const result = await db.select().from(simulationRuns).where(and(eq(simulationRuns.id, id), eq(simulationRuns.ownerId, ownerId))).limit(1);
   return result[0];
 }
 
-export async function bootstrapSimulationRuns(runs: InsertSimulationRun[]) {
+export async function bootstrapSimulationRuns(ownerId: number, runs: InsertSimulationRun[]) {
   const db = await getDb();
   if (!db || runs.length === 0) return [];
+  const existing = await listSimulationRuns({ ownerId });
+  if (existing.length > 0) return existing;
+  await db.update(simulationRuns).set({ ownerId }).where(eq(simulationRuns.ownerId, 0));
+  const legacyRuns = await listSimulationRuns({ ownerId });
+  if (legacyRuns.length > 0) return legacyRuns;
   for (const run of runs) {
-    await db.insert(simulationRuns).values(run).onDuplicateKeyUpdate({ set: { updatedAt: new Date() } });
+    const id = `${run.id}-U${ownerId}`.slice(0, 32);
+    await db.insert(simulationRuns).values({ ...run, id, ownerId }).onDuplicateKeyUpdate({ set: { updatedAt: new Date() } });
   }
-  return listSimulationRuns();
+  return listSimulationRuns({ ownerId });
+}
+
+export async function listCopilotMessages(ownerId: number, simulationId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(copilotMessages).where(and(eq(copilotMessages.ownerId, ownerId), eq(copilotMessages.simulationId, simulationId))).orderBy(asc(copilotMessages.createdAt));
+}
+
+export async function createCopilotMessage(ownerId: number, message: Omit<InsertCopilotMessage, "id" | "ownerId">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.insert(copilotMessages).values({ ...message, ownerId });
+  const rows = await db.select().from(copilotMessages).where(eq(copilotMessages.id, result[0].insertId as number)).limit(1);
+  return rows[0];
+}
+
+export async function listGovernanceDecisions(ownerId: number, simulationId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(governanceDecisions).where(and(eq(governanceDecisions.ownerId, ownerId), eq(governanceDecisions.simulationId, simulationId))).orderBy(desc(governanceDecisions.createdAt));
+}
+
+export async function createGovernanceDecision(ownerId: number, decision: Omit<InsertGovernanceDecision, "id" | "ownerId">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.insert(governanceDecisions).values({ ...decision, ownerId });
+  const rows = await db.select().from(governanceDecisions).where(eq(governanceDecisions.id, result[0].insertId as number)).limit(1);
+  return rows[0];
 }

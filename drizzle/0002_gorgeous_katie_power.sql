@@ -1,0 +1,1 @@
+-- No-op compatibility migration: the final schema keeps simulation_runs.id as the clustered primary key on TiDB.
