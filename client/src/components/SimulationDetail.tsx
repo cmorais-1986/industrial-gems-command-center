@@ -13,12 +13,15 @@ import {
   FlaskConical,
   Gauge,
   GitBranch,
+  GitCompare,
   History,
   Lightbulb,
+  MessageCircle,
   MoreHorizontal,
   Play,
   RotateCcw,
   Save,
+  Send,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -89,6 +92,30 @@ function RoiPanel() {
   return <div className="roi-panel"><div className="roi-main"><span className="roi-eyebrow">ROI PROJETADO</span><strong>4.2<span>:1</span></strong><Badge tone="green"><ArrowUpRight size={12} /> acima do gate mínimo</Badge></div><div className="roi-metrics"><div><span>Investimento</span><strong>R$ 18.4k</strong></div><div><span>Economia anual</span><strong>R$ 77.2k</strong></div><div><span>Payback</span><strong>2.9 meses</strong></div><div><span>VPL 12 meses</span><strong>R$ 58.8k</strong></div></div><div className="roi-decision"><div className="decision-icon"><CheckCircle2 size={16} /></div><div><strong>Recomendação: aprovar piloto</strong><span>Gate financeiro aprovado pelo CFO Agent · confiança 91%</span></div><button onClick={() => toast.success("Decisão registrada", { description: "Piloto aprovado para a próxima rodada" })}>Registrar decisão <ArrowUpRight size={14} /></button></div></div>;
 }
 
+function AiAssistant({ onClose }: { onClose: () => void }) {
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState([
+    { role: "assistant", text: "Analisei os dados da SIM-024. Encontrei uma tendência de deterioração no processo e três oportunidades de melhoria priorizadas." },
+    { role: "assistant", text: "A causa dominante é desgaste da ferramenta (42%). Recomendo reduzir a troca preventiva para 360 ciclos e validar o piloto com uma nova rodada de 30 dias." },
+  ]);
+  const sendMessage = (prompt = input) => {
+    const clean = prompt.trim();
+    if (!clean) return;
+    setMessages((items) => [...items, { role: "user", text: clean }, { role: "assistant", text: clean.toLowerCase().includes("roi") ? "O ROI projetado é 4,2:1, com payback de 2,9 meses. O cenário supera o gate mínimo de 3:1 e está pronto para aprovação do piloto." : clean.toLowerCase().includes("melhor") || clean.toLowerCase().includes("ação") ? "Priorize: 1) troca preventiva em 360 ciclos; 2) checklist de setup; 3) inspeção da matéria-prima no recebimento. Essas ações atacam 80% do impacto observado." : "Minha leitura indica processo instável, com 12 pontos fora dos limites de controle. Posso detalhar o plano de ação, o impacto financeiro ou comparar com outra rodada." }]);
+    setInput("");
+  };
+  return <section className="ai-copilot-card"><div className="ai-copilot-header"><div className="ai-title-wrap"><div className="ai-orb"><Sparkles size={16} /></div><div><span className="detail-eyebrow">COPILOTO CIOS</span><h3>Analista de processo</h3></div><Badge tone="green"><span className="status-live-dot" /> online</Badge></div><button className="ai-close" onClick={onClose}><X size={16} /></button></div><div className="ai-context"><span><BarChart3 size={13} /> Lendo SPC, Pareto, FMEA e ROI</span><span>contexto: SIM-024</span></div><div className="ai-messages">{messages.map((message, index) => <div className={`ai-message ${message.role}`} key={`${message.role}-${index}`}><div className="ai-message-icon">{message.role === "assistant" ? <Sparkles size={12} /> : <span>CA</span>}</div><p>{message.text}</p></div>)}</div><div className="ai-quick-prompts"><button onClick={() => sendMessage("Quais melhorias devo priorizar?")}><Lightbulb size={12} /> Priorizar melhorias</button><button onClick={() => sendMessage("Explique o ROI")}>ROI da recomendação</button><button onClick={() => sendMessage("Como estabilizar o processo?")}>Estabilizar SPC</button></div><div className="ai-input-row"><input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && sendMessage()} placeholder="Pergunte sobre os resultados..." /><button onClick={() => sendMessage()} aria-label="Enviar pergunta"><Send size={14} /></button></div></section>;
+}
+
+function ComparePanel({ history, onClose }: { history: HistoryRun[]; onClose: () => void }) {
+  const completed = history.filter((item) => item.status === "Concluída");
+  const [leftId, setLeftId] = useState(completed[0]?.id ?? "SIM-023");
+  const [rightId, setRightId] = useState(completed[1]?.id ?? "SIM-022");
+  const left = history.find((item) => item.id === leftId) ?? history[1];
+  const right = history.find((item) => item.id === rightId) ?? history[2];
+  return <section className="compare-card"><div className="compare-header"><div><span className="detail-eyebrow">SCENARIO COMPARISON</span><h3>Comparar resultados lado a lado</h3><p>Selecione duas execuções concluídas para identificar ganhos, riscos e diferenças de processo.</p></div><button className="ai-close" onClick={onClose}><X size={16} /></button></div><div className="compare-selectors"><label><span>Rodada A</span><select value={left?.id} onChange={(event) => setLeftId(event.target.value)}>{completed.map((item) => <option key={item.id} value={item.id}>{item.id} · {item.scenario}</option>)}</select></label><div className="compare-vs">VS</div><label><span>Rodada B</span><select value={right?.id} onChange={(event) => setRightId(event.target.value)}>{completed.map((item) => <option key={item.id} value={item.id}>{item.id} · {item.scenario}</option>)}</select></label></div><div className="compare-columns"><div className="compare-column compare-a"><div className="compare-column-head"><Badge tone="cyan">RODADA A</Badge><strong>{left?.scenario}</strong><span>{left?.id} · {left?.date}</span></div><div className="compare-metric"><span>Refugo</span><strong>4.0%</strong><small>baseline</small></div><div className="compare-metric"><span>Cpk</span><strong>1.41</strong><small className="good">acima do gate</small></div><div className="compare-metric"><span>ROI</span><strong>{left?.roi}</strong><small>projetado</small></div></div><div className="compare-delta"><div><ArrowUpRight size={13} /><strong>-6.0 pp</strong><span>refugo</span></div><div><TrendingUp size={13} /><strong>+0.59</strong><span>Cpk</span></div><div><GitCompare size={13} /><strong>+1.3x</strong><span>ROI</span></div></div><div className="compare-column compare-b"><div className="compare-column-head"><Badge tone="amber">RODADA B</Badge><strong>{right?.scenario}</strong><span>{right?.id} · {right?.date}</span></div><div className="compare-metric"><span>Refugo</span><strong>10.0%</strong><small className="warn">acima da meta</small></div><div className="compare-metric"><span>Cpk</span><strong className="warn">0.82</strong><small className="warn">abaixo do gate</small></div><div className="compare-metric"><span>ROI</span><strong>{right?.roi}</strong><small>projetado</small></div></div></div><div className="compare-insight"><Sparkles size={14} /><span><strong>Leitura do Analyst Agent:</strong> a Rodada A é 60% mais estável e preserva capacidade. A diferença sugere que a troca preventiva de ferramenta deve ser mantida como controle padrão.</span></div></section>;
+}
+
 export default function SimulationDetail({ gemName, gemCode, onClose }: SimulationDetailProps) {
   const [activeTab, setActiveTab] = useState("Overview");
   const [scenario, setScenario] = useState("Refugo elevado na CNC-02");
@@ -99,9 +126,16 @@ export default function SimulationDetail({ gemName, gemCode, onClose }: Simulati
   const [history, setHistory] = useState(initialHistory);
   const [isExecuting, setIsExecuting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [showAssistant, setShowAssistant] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("Todos");
 
   const filteredHistory = useMemo(() => historyFilter === "Todos" ? history : history.filter((item) => item.status === historyFilter), [history, historyFilter]);
+
+  const exportPdf = () => {
+    toast.info("Relatório preparado para PDF", { description: "Na janela de impressão, selecione ‘Salvar como PDF’." });
+    window.setTimeout(() => window.print(), 350);
+  };
 
   const executeScenario = () => {
     if (!scenario.trim()) { toast.error("Informe um nome para o cenário"); return; }
@@ -113,10 +147,12 @@ export default function SimulationDetail({ gemName, gemCode, onClose }: Simulati
   };
 
   return <div className="detail-overlay"><div className="detail-shell">
-    <header className="detail-topbar"><div className="detail-top-left"><button className="detail-back" onClick={onClose}><ArrowLeft size={16} /> Command Center</button><span className="detail-divider">/</span><span className="detail-current">{gemCode} · {scenario}</span></div><div className="detail-top-actions"><span className="synthetic-label"><span className="pulse-dot" /> DADOS SINTÉTICOS</span><button className="detail-icon-button" onClick={() => toast.info("Exportação preparada", { description: "Relatório CIOS pronto para download" })}><Download size={16} /></button><button className="detail-close" onClick={onClose} aria-label="Fechar"><X size={18} /></button></div></header>
+    <header className="detail-topbar"><div className="detail-top-left"><button className="detail-back" onClick={onClose}><ArrowLeft size={16} /> Command Center</button><span className="detail-divider">/</span><span className="detail-current">{gemCode} · {scenario}</span></div><div className="detail-top-actions"><span className="synthetic-label"><span className="pulse-dot" /> DADOS SINTÉTICOS</span><button className="detail-tool-button" onClick={() => setShowAssistant(!showAssistant)}><MessageCircle size={14} /> Copiloto IA</button><button className="detail-tool-button" onClick={() => setShowCompare(!showCompare)}><GitCompare size={14} /> Comparar</button><button className="detail-tool-button pdf-tool" onClick={exportPdf}><Download size={14} /> PDF</button><button className="detail-close" onClick={onClose} aria-label="Fechar"><X size={18} /></button></div></header>
     <div className="detail-content">
       <section className="detail-heading"><div><div className="detail-heading-kicker"><span className="heading-accent" /> SIMULATION WORKBENCH <span className="detail-version">CIOS v3.0</span></div><h1>{scenario}<span>.</span></h1><div className="detail-heading-meta"><Badge tone="amber"><span className="tiny-pulse" /> Executando</Badge><span><GitBranch size={13} /> {gemName}</span><span><Clock3 size={13} /> SIM-024 · rodada 04</span><span><Settings2 size={13} /> Semente 2026-024</span></div></div><div className="detail-heading-actions"><button className="secondary-button" onClick={() => setShowForm(!showForm)}><Settings2 size={14} /> Parametrizar</button><button className="detail-run-button" onClick={executeScenario} disabled={isExecuting}><Play size={14} fill="currentColor" /> {isExecuting ? "Executando..." : "Executar rodada"}</button></div></section>
-      <nav className="detail-tabs">{tabs.map((tab) => <button key={tab} className={activeTab === tab ? "active" : ""} onClick={() => setActiveTab(tab)}>{tab}{tab === "SPC & Capacidade" && <span className="tab-new">LIVE</span>}</button>)}</nav>
+      <nav className="detail-tabs">{tabs.map((tab) => <button key={tab} className={activeTab === tab ? "active" : ""} onClick={() => setActiveTab(tab)}>{tab}{tab === "SPC & Capacidade" && <span className="tab-new">LIVE</span>}</button>)}<span className="tabs-spacer" /><button className={`tab-tool ${showAssistant ? "active-tool" : ""}`} onClick={() => setShowAssistant(!showAssistant)}><MessageCircle size={13} /> Perguntar ao CIOS</button><button className={`tab-tool ${showCompare ? "active-tool" : ""}`} onClick={() => setShowCompare(!showCompare)}><GitCompare size={13} /> Comparar rodadas</button></nav>
+      {showAssistant && <AiAssistant onClose={() => setShowAssistant(false)} />}
+      {showCompare && <ComparePanel history={history} onClose={() => setShowCompare(false)} />}
       {showForm && <section className="scenario-form-card"><div className="scenario-form-head"><div><span className="detail-eyebrow">SCENARIO BUILDER</span><h3>Parametrizar nova rodada</h3></div><button onClick={() => setShowForm(false)}><X size={16} /></button></div><div className="scenario-form-grid"><label>Nome do cenário<input value={scenario} onChange={(e) => setScenario(e.target.value)} /></label><label>Processo<select value={process} onChange={(e) => setProcess(e.target.value)}><option>Usinagem CNC</option><option>Estamparia</option><option>Pintura E-coat</option><option>Montagem</option></select></label><label>Baseline de refugo (%)<input type="number" value={baseline} onChange={(e) => setBaseline(e.target.value)} /></label><label>Meta de refugo (%)<input type="number" value={target} onChange={(e) => setTarget(e.target.value)} /></label><label>Janela de dados (dias)<input type="number" value={days} onChange={(e) => setDays(e.target.value)} /></label><label>Injeção de falha<select defaultValue="Desgaste progressivo"><option>Desgaste progressivo</option><option>Setup fora do padrão</option><option>Variação de matéria-prima</option><option>Sem falha (baseline)</option></select></label></div><div className="scenario-form-foot"><span><Sparkles size={14} /> Dados serão gerados com semente reprodutível</span><button className="save-scenario" onClick={() => { setShowForm(false); toast.success("Parâmetros salvos", { description: `${process} · ${days} dias · baseline ${baseline}% → meta ${target}%` }); }}><Save size={14} /> Salvar parâmetros</button></div></section>}
       <section className="detail-kpi-row"><div className="detail-kpi-card"><div className="detail-kpi-top"><span>REFUGO ATUAL</span><TriangleAlert size={15} /></div><strong>11.0<span>%</span></strong><div className="kpi-change negative"><ArrowUpRight size={12} /> +7.0 pp vs. baseline</div></div><div className="detail-kpi-card"><div className="detail-kpi-top"><span>CAPACIDADE Cpk</span><Gauge size={15} /></div><strong>0.82</strong><div className="kpi-change negative"><ArrowDownRight size={12} /> abaixo de 1.33 mínimo</div></div><div className="detail-kpi-card"><div className="detail-kpi-top"><span>PARADAS</span><Zap size={15} /></div><strong>14.6<span>h</span></strong><div className="kpi-change negative"><ArrowUpRight size={12} /> +34% vs. ciclo anterior</div></div><div className="detail-kpi-card kpi-positive"><div className="detail-kpi-top"><span>ROI PROJETADO</span><TrendingUp size={15} /></div><strong>4.2<span>:1</span></strong><div className="kpi-change positive"><ArrowUpRight size={12} /> gate financeiro aprovado</div></div></section>
       {activeTab === "Overview" && <>
