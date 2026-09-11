@@ -70,3 +70,20 @@ export const governanceDecisions = mysqlTable("governance_decisions", {
 
 export type GovernanceDecision = typeof governanceDecisions.$inferSelect;
 export type InsertGovernanceDecision = typeof governanceDecisions.$inferInsert;
+
+export const governanceDecisionAudits = mysqlTable("governance_decision_audits", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull(),
+  decisionId: int("decisionId").notNull(),
+  authorName: varchar("authorName", { length: 160 }).notNull(),
+  authorEmail: varchar("authorEmail", { length: 320 }),
+  action: mysqlEnum("action", ["Criada", "Editada", "Aprovada", "Rejeitada"]).notNull(),
+  previousStatus: mysqlEnum("previousStatus", ["Registrada", "Aprovada", "Rejeitada"]),
+  newStatus: mysqlEnum("newStatus", ["Registrada", "Aprovada", "Rejeitada"]),
+  previousDecision: varchar("previousDecision", { length: 160 }),
+  newDecision: varchar("newDecision", { length: 160 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type GovernanceDecisionAudit = typeof governanceDecisionAudits.$inferSelect;
+export type InsertGovernanceDecisionAudit = typeof governanceDecisionAudits.$inferInsert;

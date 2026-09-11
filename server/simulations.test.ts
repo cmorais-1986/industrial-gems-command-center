@@ -61,14 +61,17 @@ describe("authenticated simulation workspace", () => {
 
   it("loads owner-scoped copiloto and governance histories", async () => {
     const caller = appRouter.createCaller(createContext(authenticatedUser));
-    const [messages, decisions] = await Promise.all([
+    const [messages, decisions, audits] = await Promise.all([
       caller.copilot.list({ simulationId: "SIM-024" }),
-      caller.governance.list({ simulationId: "SIM-024" }),
+      caller.governance.list({ simulationId: "SIM-024", status: "Aprovada", from: new Date("2026-01-01") }),
+      caller.governance.audit({ decisionId: 999999 }),
     ]);
     expect(Array.isArray(messages)).toBe(true);
     expect(Array.isArray(decisions)).toBe(true);
+    expect(Array.isArray(audits)).toBe(true);
     expect(messages.every((message) => message.ownerId === authenticatedUser.id)).toBe(true);
     expect(decisions.every((decision) => decision.ownerId === authenticatedUser.id)).toBe(true);
+    expect(audits.every((audit) => audit.ownerId === authenticatedUser.id)).toBe(true);
   });
 
   it("validates governance updates and blocks unauthenticated updates", async () => {

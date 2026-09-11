@@ -6,6 +6,7 @@ import {
   InsertSimulationRun,
   InsertUser,
   copilotMessages,
+  governanceDecisionAudits,
   governanceDecisions,
   simulationRuns,
   users,
@@ -138,24 +139,45 @@ export async function createCopilotMessage(ownerId: number, message: Omit<Insert
   return rows[0];
 }
 
-export async function listGovernanceDecisions(ownerId: number, simulationId: string) {
+type GovernanceListFilters = { simulationId: string; status?: "Registrada" | "Aprovada" | "Rejeitada"; from?: Date; to?: Date };
+
+export async function listGovernanceDecisions(ownerId: number, filters: GovernanceListFilters) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(governanceDecisions).where(and(eq(governanceDecisions.ownerId, ownerId), eq(governanceDecisions.simulationId, simulationId))).orderBy(desc(governanceDecisions.createdAt));
+  const conditions = [eq(governanceDecisions.ownerId, ownerId), eq(governanceDecisions.simulationId, filters.simulationId)];
+  if (filters.status) conditions.push(eq(governanceDecisions.status, filters.status));
+  if (filters.from) conditions.push(gte(governanceDecisions.createdAt, filters.from));
+  if (filters.to) conditions.push(lte(governanceDecisions.createdAt, filters.to));
+  return db.select().from(governanceDecisions).where(and(...conditions)).orderBy(desc(governanceDecisions.createdAt));
 }
 
-export async function createGovernanceDecision(ownerId: number, decision: Omit<InsertGovernanceDecision, "id" | "ownerId">) {
+type GovernanceAuthor = { name?: string | null; email?: string | null };
+
+export async function createGovernanceDecision(ownerId: number, author: GovernanceAuthor, decision: Omit<InsertGovernanceDecision, "id" | "ownerId">) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   const result = await db.insert(governanceDecisions).values({ ...decision, ownerId });
-  const rows = await db.select().from(governanceDecisions).where(eq(governanceDecisions.id, result[0].insertId as number)).limit(1);
+  const decisionId = result[0].insertId as number;
+  await db.insert(governanceDecisionAudits).values({ ownerId, decisionId, authorName: author.name ?? "Usuário autenticado", authorEmail: author.email ?? null, action: "Criada", newStatus: decision.status, newDecision: decision.decision });
+  const rows = await db.select().from(governanceDecisions).where(and(eq(governanceDecisions.id, decisionId), eq(governanceDecisions.ownerId, ownerId))).limit(1);
   return rows[0];
 }
 
-export async function updateGovernanceDecision(ownerId: number, id: number, decision: Pick<InsertGovernanceDecision, "decision" | "rationale" | "status">) {
+export async function updateGovernanceDecision(ownerId: number, author: GovernanceAuthor, id: number, decision: Pick<InsertGovernanceDecision, "decision" | "rationale" | "status">) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
+  const previousRows = await db.select().from(governanceDecisions).where(and(eq(governanceDecisions.id, id), eq(governanceDecisions.ownerId, ownerId))).limit(1);
+  const previous = previousRows[0];
+  if (!previous) return undefined;
   await db.update(governanceDecisions).set(decision).where(and(eq(governanceDecisions.id, id), eq(governanceDecisions.ownerId, ownerId)));
+  const action = decision.status === "Aprovada" && previous.status !== "Aprovada" ? "Aprovada" : decision.status === "Rejeitada" && previous.status !== "Rejeitada" ? "Rejeitada" : "Editada";
+  await db.insert(governanceDecisionAudits).values({ ownerId, decisionId: id, authorName: author.name ?? "Usuário autenticado", authorEmail: author.email ?? null, action, previousStatus: previous.status, newStatus: decision.status, previousDecision: previous.decision, newDecision: decision.decision });
   const rows = await db.select().from(governanceDecisions).where(and(eq(governanceDecisions.id, id), eq(governanceDecisions.ownerId, ownerId))).limit(1);
   return rows[0];
+}
+
+export async function listGovernanceAudits(ownerId: number, decisionId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(governanceDecisionAudits).where(and(eq(governanceDecisionAudits.ownerId, ownerId), eq(governanceDecisionAudits.decisionId, decisionId))).orderBy(desc(governanceDecisionAudits.createdAt));
 }

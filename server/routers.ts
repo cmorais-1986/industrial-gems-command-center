@@ -7,6 +7,7 @@ import {
   createGovernanceDecision,
   createSimulationRun,
   listCopilotMessages,
+  listGovernanceAudits,
   listGovernanceDecisions,
   listSimulationRuns,
   updateGovernanceDecision,
@@ -22,6 +23,13 @@ const simulationFilters = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
 }).optional();
+
+const governanceFilters = z.object({
+  simulationId: z.string().min(1).max(32),
+  status: z.enum(["Registrada", "Aprovada", "Rejeitada"]).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+});
 
 const seedRuns = [
   { id: "SIM-024", gemCode: "GEM-01", gemName: "Scorpios Metalworks", scenario: "Refugo elevado na CNC-02", process: "Usinagem CNC", baselinePct: 4, targetPct: 2, windowDays: 90, failureMode: "Desgaste progressivo", status: "Executando" as const, roi: "4.2 : 1", resultSummary: "Processo instável; desgaste da ferramenta responde por 42% do impacto." },
@@ -71,19 +79,20 @@ export const appRouter = router({
   }),
 
   governance: router({
-    list: protectedProcedure.input(z.object({ simulationId: z.string().min(1).max(32) })).query(({ ctx, input }) => listGovernanceDecisions(ctx.user.id, input.simulationId)),
+    list: protectedProcedure.input(governanceFilters).query(({ ctx, input }) => listGovernanceDecisions(ctx.user.id, input)),
+    audit: protectedProcedure.input(z.object({ decisionId: z.number().int().positive() })).query(({ ctx, input }) => listGovernanceAudits(ctx.user.id, input.decisionId)),
     create: protectedProcedure.input(z.object({
       simulationId: z.string().min(1).max(32),
       decision: z.string().min(1).max(160),
       rationale: z.string().min(1).max(4000),
       status: z.enum(["Registrada", "Aprovada", "Rejeitada"]).default("Registrada"),
-    })).mutation(({ ctx, input }) => createGovernanceDecision(ctx.user.id, input)),
+    })).mutation(({ ctx, input }) => createGovernanceDecision(ctx.user.id, ctx.user, input)),
     update: protectedProcedure.input(z.object({
       id: z.number().int().positive(),
       decision: z.string().min(1).max(160),
       rationale: z.string().min(1).max(4000),
       status: z.enum(["Registrada", "Aprovada", "Rejeitada"]),
-    })).mutation(({ ctx, input }) => updateGovernanceDecision(ctx.user.id, input.id, input)),
+    })).mutation(({ ctx, input }) => updateGovernanceDecision(ctx.user.id, ctx.user, input.id, input)),
   }),
 });
 
