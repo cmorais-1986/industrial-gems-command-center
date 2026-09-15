@@ -56,4 +56,13 @@ describe("integrated brake-pad production", () => {
     const caller = appRouter.createCaller(context(user));
     await expect(caller.production.createEngineeringItem({ itemCode: "", title: "Peça", revision: "A", ownerName: "Engenharia" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+
+  it("protects the PLM workflow endpoints and validates drawings", async () => {
+    const publicCaller = appRouter.createCaller(context());
+    await expect(publicCaller.production.stages({ itemId: 1 })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    const caller = appRouter.createCaller(context(user));
+    await expect(caller.production.uploadDrawing({ itemId: 1, fileName: "desenho.txt", contentType: "application/pdf", base64: "1234567890" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.production.completeStage({ itemId: 0, stageId: 1 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.production.decideApproval({ itemId: 1, approvalId: 0, status: "Aprovado" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });

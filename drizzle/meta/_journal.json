@@ -43,6 +43,13 @@
       "when": 1789503411940,
       "tag": "0005_overrated_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1789504003810,
+      "tag": "0006_wild_echo",
+      "breakpoints": true
     }
   ]
 }

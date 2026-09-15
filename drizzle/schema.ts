@@ -117,7 +117,7 @@ export type MaterialLot = typeof materialLots.$inferSelect;
 export type InsertMaterialLot = typeof materialLots.$inferInsert;
 
 export const engineeringItems = mysqlTable("engineering_items", {
-  id: int("id").autoincrement().primaryKey(), ownerId: int("ownerId").notNull(), itemCode: varchar("itemCode", { length: 48 }).notNull(), title: varchar("title", { length: 180 }).notNull(), revision: varchar("revision", { length: 12 }).notNull(), status: mysqlEnum("status", ["Em desenvolvimento", "Em aprovação", "Liberado", "Obsoleto"]).default("Em desenvolvimento").notNull(), ownerName: varchar("ownerName", { length: 120 }).notNull(), updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  id: int("id").autoincrement().primaryKey(), ownerId: int("ownerId").notNull(), itemCode: varchar("itemCode", { length: 48 }).notNull(), title: varchar("title", { length: 180 }).notNull(), revision: varchar("revision", { length: 12 }).notNull(), status: mysqlEnum("status", ["Em desenvolvimento", "Em aprovação", "Liberado", "Obsoleto"]).default("Em desenvolvimento").notNull(), currentStage: varchar("currentStage", { length: 80 }).default("Requisito e conceito").notNull(), ownerName: varchar("ownerName", { length: 120 }).notNull(), drawingKey: varchar("drawingKey", { length: 255 }), drawingUrl: varchar("drawingUrl", { length: 255 }), drawingName: varchar("drawingName", { length: 180 }), updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type EngineeringItem = typeof engineeringItems.$inferSelect;
 export type InsertEngineeringItem = typeof engineeringItems.$inferInsert;
@@ -127,6 +127,18 @@ export const bomItems = mysqlTable("bom_items", {
 });
 export type BomItem = typeof bomItems.$inferSelect;
 export type InsertBomItem = typeof bomItems.$inferInsert;
+
+export const engineeringStages = mysqlTable("engineering_stages", {
+  id: int("id").autoincrement().primaryKey(), ownerId: int("ownerId").notNull(), itemId: int("itemId").notNull(), stageName: varchar("stageName", { length: 100 }).notNull(), stageOrder: int("stageOrder").notNull(), status: mysqlEnum("status", ["Não iniciado", "Em andamento", "Concluída", "Bloqueada"]).default("Não iniciado").notNull(), completedBy: varchar("completedBy", { length: 120 }), completedAt: timestamp("completedAt"), notes: text("notes"),
+});
+export type EngineeringStage = typeof engineeringStages.$inferSelect;
+export type InsertEngineeringStage = typeof engineeringStages.$inferInsert;
+
+export const engineeringApprovals = mysqlTable("engineering_approvals", {
+  id: int("id").autoincrement().primaryKey(), ownerId: int("ownerId").notNull(), itemId: int("itemId").notNull(), area: mysqlEnum("area", ["Engenharia", "Qualidade", "Produção"]).notNull(), status: mysqlEnum("status", ["Pendente", "Aprovado", "Rejeitado"]).default("Pendente").notNull(), approverName: varchar("approverName", { length: 120 }), comment: text("comment"), decidedAt: timestamp("decidedAt"),
+});
+export type EngineeringApproval = typeof engineeringApprovals.$inferSelect;
+export type InsertEngineeringApproval = typeof engineeringApprovals.$inferInsert;
 
 export const productionReports = mysqlTable("production_reports", {
   id: int("id").autoincrement().primaryKey(), ownerId: int("ownerId").notNull(), orderCode: varchar("orderCode", { length: 32 }).notNull(), operatorName: varchar("operatorName", { length: 120 }).notNull(), machineCode: varchar("machineCode", { length: 64 }).notNull(), shift: mysqlEnum("shift", ["1º turno", "2º turno", "3º turno"]).notNull(), goodQty: int("goodQty").notNull(), scrapQty: int("scrapQty").notNull(), notes: text("notes"), reportedAt: timestamp("reportedAt").defaultNow().notNull(),

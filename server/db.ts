@@ -12,6 +12,8 @@ import {
   governanceDecisionAudits,
   governanceDecisions,
   engineeringItems,
+  engineeringStages,
+  engineeringApprovals,
   bomItems,
   productionReports,
   qualityInspections,
@@ -21,12 +23,18 @@ import {
   simulationRuns,
   users,
 } from "../drizzle/schema";
-import { ENV } from "./_core/env";
+import { ENV } from './_core/env';
+import { storagePut } from "./storage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
 export async function listEngineeringItems(ownerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(engineeringItems).where(eq(engineeringItems.ownerId, ownerId)).orderBy(desc(engineeringItems.updatedAt)); }
-export async function createEngineeringItem(ownerId: number, input: Omit<InsertEngineeringItem, "id" | "ownerId" | "status">) { const db = await getDb(); if (!db) throw new Error("Database is not available"); const result = await db.insert(engineeringItems).values({ ...input, ownerId, status: "Em desenvolvimento" }); const rows = await db.select().from(engineeringItems).where(and(eq(engineeringItems.id, result[0].insertId as number), eq(engineeringItems.ownerId, ownerId))).limit(1); return rows[0]; }
+export async function createEngineeringItem(ownerId: number, input: Omit<InsertEngineeringItem, "id" | "ownerId" | "status" | "currentStage" | "drawingKey" | "drawingUrl" | "drawingName">) { const db = await getDb(); if (!db) throw new Error("Database is not available"); const result = await db.insert(engineeringItems).values({ ...input, ownerId, status: "Em desenvolvimento", currentStage: "Requisito e conceito" }); const itemId = result[0].insertId as number; await db.insert(engineeringStages).values(["Requisito e conceito", "Estudo de viabilidade", "Projeto detalhado", "Desenho técnico", "BOM e roteiro", "Protótipo", "Validação", "Liberação"].map((stageName, index) => ({ ownerId, itemId, stageName, stageOrder: index + 1, status: index === 0 ? "Em andamento" as const : "Não iniciado" as const }))); await db.insert(engineeringApprovals).values(["Engenharia", "Qualidade", "Produção"].map((area) => ({ ownerId, itemId, area: area as "Engenharia" | "Qualidade" | "Produção", status: "Pendente" as const }))); await db.insert(bomItems).values({ ownerId, productCode: input.itemCode, componentCode: `${input.itemCode}-COMP-001`, componentName: "Componente a definir · BOM inicial", quantity: "1,000", unit: "conjunto", revision: input.revision }); const rows = await db.select().from(engineeringItems).where(and(eq(engineeringItems.id, itemId), eq(engineeringItems.ownerId, ownerId))).limit(1); return rows[0]; }
+export async function listEngineeringStages(ownerId: number, itemId: number) { const db = await getDb(); if (!db) return []; return db.select().from(engineeringStages).where(and(eq(engineeringStages.ownerId, ownerId), eq(engineeringStages.itemId, itemId))).orderBy(asc(engineeringStages.stageOrder)); }
+export async function listEngineeringApprovals(ownerId: number, itemId: number) { const db = await getDb(); if (!db) return []; return db.select().from(engineeringApprovals).where(and(eq(engineeringApprovals.ownerId, ownerId), eq(engineeringApprovals.itemId, itemId))); }
+export async function uploadEngineeringDrawing(ownerId: number, itemId: number, fileName: string, contentType: string, base64: string) { const db = await getDb(); if (!db) throw new Error("Database is not available"); const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_"); const stored = await storagePut(`${ownerId}-engineering/${itemId}-${safeName}`, Buffer.from(base64, "base64"), contentType); await db.update(engineeringItems).set({ drawingKey: stored.key, drawingUrl: stored.url, drawingName: fileName, currentStage: "Desenho técnico" }).where(and(eq(engineeringItems.id, itemId), eq(engineeringItems.ownerId, ownerId))); return stored; }
+export async function advanceEngineeringStage(ownerId: number, itemId: number, stageId: number, completedBy: string, notes?: string) { const db = await getDb(); if (!db) throw new Error("Database is not available"); const now = new Date(); await db.update(engineeringStages).set({ status: "Concluída", completedBy, completedAt: now, notes }).where(and(eq(engineeringStages.id, stageId), eq(engineeringStages.itemId, itemId), eq(engineeringStages.ownerId, ownerId))); const next = await db.select().from(engineeringStages).where(and(eq(engineeringStages.itemId, itemId), eq(engineeringStages.ownerId, ownerId), eq(engineeringStages.status, "Não iniciado"))).orderBy(asc(engineeringStages.stageOrder)).limit(1); if (next[0]) { await db.update(engineeringStages).set({ status: "Em andamento" }).where(eq(engineeringStages.id, next[0].id)); await db.update(engineeringItems).set({ currentStage: next[0].stageName }).where(and(eq(engineeringItems.id, itemId), eq(engineeringItems.ownerId, ownerId))); } return listEngineeringStages(ownerId, itemId); }
+export async function decideEngineeringApproval(ownerId: number, itemId: number, approvalId: number, status: "Aprovado" | "Rejeitado", approverName: string, comment?: string) { const db = await getDb(); if (!db) throw new Error("Database is not available"); await db.update(engineeringApprovals).set({ status, approverName, comment, decidedAt: new Date() }).where(and(eq(engineeringApprovals.id, approvalId), eq(engineeringApprovals.itemId, itemId), eq(engineeringApprovals.ownerId, ownerId))); const pending = await db.select({ id: engineeringApprovals.id }).from(engineeringApprovals).where(and(eq(engineeringApprovals.itemId, itemId), eq(engineeringApprovals.ownerId, ownerId), eq(engineeringApprovals.status, "Pendente"))).limit(1); if (!pending.length && status === "Aprovado") await db.update(engineeringItems).set({ status: "Liberado", currentStage: "Liberação" }).where(and(eq(engineeringItems.id, itemId), eq(engineeringItems.ownerId, ownerId))); return listEngineeringApprovals(ownerId, itemId); }
 export async function listBomItems(ownerId: number, productCode?: string) { const db = await getDb(); if (!db) return []; return db.select().from(bomItems).where(productCode ? and(eq(bomItems.ownerId, ownerId), eq(bomItems.productCode, productCode)) : eq(bomItems.ownerId, ownerId)); }
 export async function listStampingOperations(ownerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(stampingOperations).where(eq(stampingOperations.ownerId, ownerId)); }
 export async function listProductionReports(ownerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(productionReports).where(eq(productionReports.ownerId, ownerId)).orderBy(desc(productionReports.reportedAt)); }
@@ -107,6 +115,14 @@ export async function bootstrapProduction(ownerId: number) {
       { ownerId, orderCode: "OP-2026-0915", characteristic: "Dureza Rockwell", specification: "85 ± 5 HRB", measuredValue: "87 HRB", result: "Aguardando" },
       { ownerId, orderCode: "OP-2026-0916", characteristic: "Cisalhamento", specification: "≥ 1,5 MPa", measuredValue: "1,32 MPa", result: "Aguardando" },
     ]);
+  }
+  const allEngineering = await db.select({ id: engineeringItems.id }).from(engineeringItems).where(eq(engineeringItems.ownerId, ownerId));
+  for (const item of allEngineering) {
+    const itemStages = await db.select({ id: engineeringStages.id }).from(engineeringStages).where(and(eq(engineeringStages.ownerId, ownerId), eq(engineeringStages.itemId, item.id))).limit(1);
+    if (!itemStages.length) {
+      await db.insert(engineeringStages).values(["Requisito e conceito", "Estudo de viabilidade", "Projeto detalhado", "Desenho técnico", "BOM e roteiro", "Protótipo", "Validação", "Liberação"].map((stageName, index) => ({ ownerId, itemId: item.id, stageName, stageOrder: index + 1, status: index === 0 ? "Em andamento" as const : "Não iniciado" as const })));
+      await db.insert(engineeringApprovals).values(["Engenharia", "Qualidade", "Produção"].map((area) => ({ ownerId, itemId: item.id, area: area as "Engenharia" | "Qualidade" | "Produção", status: "Pendente" as const })));
+    }
   }
   return { seeded: true };
 }
