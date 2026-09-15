@@ -87,3 +87,31 @@ export const governanceDecisionAudits = mysqlTable("governance_decision_audits",
 
 export type GovernanceDecisionAudit = typeof governanceDecisionAudits.$inferSelect;
 export type InsertGovernanceDecisionAudit = typeof governanceDecisionAudits.$inferInsert;
+
+export const productionOrders = mysqlTable("production_orders", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull(),
+  orderCode: varchar("orderCode", { length: 32 }).notNull(),
+  productCode: varchar("productCode", { length: 32 }).notNull(),
+  quantity: int("quantity").notNull(),
+  customer: varchar("customer", { length: 160 }).notNull(),
+  status: mysqlEnum("status", ["Planejada", "Em produção", "Em inspeção", "Concluída", "Quarentena"]).default("Planejada").notNull(),
+  currentStep: varchar("currentStep", { length: 80 }).default("Mistura").notNull(),
+  dueDate: timestamp("dueDate").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ProductionOrder = typeof productionOrders.$inferSelect;
+export type InsertProductionOrder = typeof productionOrders.$inferInsert;
+
+export const materialLots = mysqlTable("material_lots", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull(),
+  lotCode: varchar("lotCode", { length: 48 }).notNull(),
+  material: varchar("material", { length: 160 }).notNull(),
+  supplier: varchar("supplier", { length: 160 }).notNull(),
+  status: mysqlEnum("status", ["Liberado", "Quarentena", "Rejeitado"]).default("Liberado").notNull(),
+  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
+});
+export type MaterialLot = typeof materialLots.$inferSelect;
+export type InsertMaterialLot = typeof materialLots.$inferInsert;

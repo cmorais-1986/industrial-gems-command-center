@@ -10,6 +10,11 @@ import {
   listGovernanceAudits,
   listGovernanceDecisions,
   listSimulationRuns,
+  listMaterialLots,
+  listProductionOrders,
+  createProductionOrder,
+  bootstrapProduction,
+  updateProductionOrderStatus,
   updateGovernanceDecision,
 } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -93,6 +98,14 @@ export const appRouter = router({
       rationale: z.string().min(1).max(4000),
       status: z.enum(["Registrada", "Aprovada", "Rejeitada"]),
     })).mutation(({ ctx, input }) => updateGovernanceDecision(ctx.user.id, ctx.user, input.id, input)),
+  }),
+
+  production: router({
+    orders: protectedProcedure.input(z.object({ search: z.string().max(160).optional() })).query(({ ctx, input }) => listProductionOrders(ctx.user.id, input.search)),
+    materialLots: protectedProcedure.query(({ ctx }) => listMaterialLots(ctx.user.id)),
+    bootstrap: protectedProcedure.mutation(({ ctx }) => bootstrapProduction(ctx.user.id)),
+    createOrder: protectedProcedure.input(z.object({ productCode: z.string().min(1).max(32), quantity: z.number().int().positive().max(1000000), customer: z.string().min(1).max(160), dueDate: z.coerce.date() })).mutation(({ ctx, input }) => createProductionOrder(ctx.user.id, input)),
+    updateOrderStatus: protectedProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(["Planejada", "Em produção", "Em inspeção", "Concluída", "Quarentena"]) })).mutation(({ ctx, input }) => updateProductionOrderStatus(ctx.user.id, input.id, input.status)),
   }),
 });
 

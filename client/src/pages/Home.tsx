@@ -15,6 +15,7 @@ import {
   Cpu,
   Database,
   FlaskConical,
+  Factory,
   Gauge,
   GitBranch,
   Layers3,
@@ -42,6 +43,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import SimulationDetail from "../components/SimulationDetail";
+import ProductionWorkbench from "../components/ProductionWorkbench";
 
 type Gem = {
   id: string;
@@ -124,6 +126,7 @@ const activity: ActivityItem[] = [
 
 const navItems = [
   { label: "Command Center", icon: LayoutDashboard },
+  { label: "Produção", icon: Factory },
   { label: "Simulações", icon: FlaskConical },
   { label: "GEMS industriais", icon: Layers3 },
   { label: "Agentes & CIOS", icon: BrainCircuit },
@@ -185,6 +188,7 @@ export default function Home() {
   const [activityItems, setActivityItems] = useState(activity);
   const [showSimulationDetail, setShowSimulationDetail] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showProduction, setShowProduction] = useState(false);
   const selectedGem = gems.find((gem) => gem.id === selectedGemId) ?? gems[0];
   const filteredGems = useMemo(() => {
     const normalized = query.toLowerCase().trim();
@@ -215,6 +219,7 @@ export default function Home() {
   const handleNav = (label: string) => {
     setActiveNav(label);
     setIsSidebarOpen(false);
+    if (label === "Produção") { setShowProduction(true); return; }
     if (label !== "Command Center") toast.info(`${label} selecionado`, { description: "Módulo visual em modo de simulação" });
   };
 
@@ -378,6 +383,7 @@ export default function Home() {
       </main>
       {showProfile && <div className="profile-overlay" role="dialog" aria-modal="true" aria-label="Perfil do usuário"><section className="profile-modal"><div className="profile-modal-head"><div><span className="section-kicker">IDENTIDADE E ACESSO</span><h2>Meu perfil</h2></div><button className="profile-close" onClick={() => setShowProfile(false)} aria-label="Fechar perfil"><X size={18} /></button></div><div className="profile-hero"><div className="profile-large-avatar">{(user?.name ?? "CA").slice(0, 2).toUpperCase()}</div><div><strong>{user?.name ?? "Usuário autenticado"}</strong><span>Conta Manus · dados isolados por usuário</span></div></div><div className="profile-fields"><div><UserRound size={15} /><span>Nome</span><strong>{user?.name ?? "Não informado"}</strong></div><div><Mail size={15} /><span>E-mail</span><strong>{user?.email ?? "Não informado"}</strong></div><div><ShieldCheck size={15} /><span>Permissão</span><strong>{user?.role === "admin" ? "Administrador" : "Usuário do laboratório"}</strong></div></div><div className="profile-modal-foot"><small>Suas simulações, mensagens e decisões são privadas.</small><button className="logout-button" onClick={handleLogout}><LogOut size={15} /> Sair da conta</button></div></section></div>}
       {showSimulationDetail && <SimulationDetail gemName={selectedGem.name} gemCode={selectedGem.code} onClose={() => setShowSimulationDetail(false)} />}
+      {showProduction && <ProductionWorkbench onClose={() => { setShowProduction(false); setActiveNav("Command Center"); }} />}
     </div>
   );
 }

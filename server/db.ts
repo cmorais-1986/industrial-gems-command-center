@@ -1,19 +1,76 @@
-import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertCopilotMessage,
   InsertGovernanceDecision,
+  InsertProductionOrder,
   InsertSimulationRun,
   InsertUser,
   copilotMessages,
   governanceDecisionAudits,
   governanceDecisions,
+  materialLots,
+  productionOrders,
   simulationRuns,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+
+export async function listProductionOrders(ownerId: number, search?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(productionOrders.ownerId, ownerId)];
+  if (search) conditions.push(or(eq(productionOrders.orderCode, search), eq(productionOrders.productCode, search), eq(productionOrders.customer, search)) as never);
+  return db.select().from(productionOrders).where(and(...conditions)).orderBy(desc(productionOrders.createdAt));
+}
+
+export async function createProductionOrder(ownerId: number, input: Omit<InsertProductionOrder, "id" | "ownerId" | "orderCode" | "status" | "currentStep">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const code = `OP-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
+  const result = await db.insert(productionOrders).values({ ...input, ownerId, orderCode: code, status: "Planejada", currentStep: "Mistura" });
+  const rows = await db.select().from(productionOrders).where(eq(productionOrders.id, result[0].insertId as number)).limit(1);
+  return rows[0];
+}
+
+export async function updateProductionOrderStatus(ownerId: number, id: number, status: InsertProductionOrder["status"]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const currentStep = status === "Concluída" ? "Expedição" : status === "Em inspeção" ? "Inspeção" : status === "Em produção" ? "Prensagem" : status === "Quarentena" ? "Inspeção" : "Mistura";
+  await db.update(productionOrders).set({ status, currentStep }).where(and(eq(productionOrders.id, id), eq(productionOrders.ownerId, ownerId)));
+  const rows = await db.select().from(productionOrders).where(and(eq(productionOrders.id, id), eq(productionOrders.ownerId, ownerId))).limit(1);
+  return rows[0];
+}
+
+export async function listMaterialLots(ownerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(materialLots).where(eq(materialLots.ownerId, ownerId)).orderBy(desc(materialLots.receivedAt));
+}
+
+export async function bootstrapProduction(ownerId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const existingOrders = await db.select({ id: productionOrders.id }).from(productionOrders).where(eq(productionOrders.ownerId, ownerId)).limit(1);
+  const existingLots = await db.select({ id: materialLots.id }).from(materialLots).where(eq(materialLots.ownerId, ownerId)).limit(1);
+  if (!existingOrders.length) {
+    await db.insert(productionOrders).values([
+      { ownerId, orderCode: "OP-2026-0915", productCode: "BP-AX-001", quantity: 2400, customer: "Scorpios Automotive", status: "Em produção", currentStep: "Cura", dueDate: new Date(Date.now() + 3 * 86400000) },
+      { ownerId, orderCode: "OP-2026-0916", productCode: "BP-HT-002", quantity: 1200, customer: "Atlas Mobility", status: "Em inspeção", currentStep: "Inspeção", dueDate: new Date(Date.now() + 6 * 86400000) },
+      { ownerId, orderCode: "OP-2026-0917", productCode: "BP-EC-003", quantity: 1800, customer: "Scorpios Automotive", status: "Planejada", currentStep: "Mistura", dueDate: new Date(Date.now() + 9 * 86400000) },
+    ]);
+  }
+  if (!existingLots.length) {
+    await db.insert(materialLots).values([
+      { ownerId, lotCode: "MP-2026-0912", material: "Fibra metálica de reforço", supplier: "MetalFiber Brasil", status: "Quarentena" },
+      { ownerId, lotCode: "MP-2026-0910", material: "Resina fenólica", supplier: "ResinTech", status: "Liberado" },
+      { ownerId, lotCode: "MP-2026-0908", material: "Grafite industrial", supplier: "Carbon Solutions", status: "Liberado" },
+    ]);
+  }
+  return { seeded: true };
+}
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
