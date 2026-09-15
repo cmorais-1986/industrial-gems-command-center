@@ -13,6 +13,8 @@ describe("integrated brake-pad production", () => {
     const caller = appRouter.createCaller(context());
     await expect(caller.production.orders({})).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(caller.production.materialLots()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.production.engineering()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.production.inspections()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("returns orders and lots isolated to the current owner", async () => {
@@ -28,5 +30,23 @@ describe("integrated brake-pad production", () => {
     const caller = appRouter.createCaller(context(user));
     await expect(caller.production.createOrder({ productCode: "BP-AX-001", quantity: 0, customer: "Cliente", dueDate: new Date() })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.production.updateOrderStatus({ id: 0, status: "Concluída" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("loads the integrated industrial modules for the current owner", async () => {
+    const caller = appRouter.createCaller(context(user));
+    const [engineering, bom, stamping, reports, inspections] = await Promise.all([
+      caller.production.engineering(), caller.production.bom({ productCode: "BP-AX-001" }), caller.production.stamping(), caller.production.reports(), caller.production.inspections(),
+    ]);
+    expect(engineering.every((item) => item.ownerId === user.id)).toBe(true);
+    expect(bom.every((item) => item.ownerId === user.id)).toBe(true);
+    expect(stamping.every((item) => item.ownerId === user.id)).toBe(true);
+    expect(reports.every((item) => item.ownerId === user.id)).toBe(true);
+    expect(inspections.every((item) => item.ownerId === user.id)).toBe(true);
+  });
+
+  it("validates production reports and digital inspection approval inputs", async () => {
+    const caller = appRouter.createCaller(context(user));
+    await expect(caller.production.report({ orderCode: "OP-1", operatorName: "", machineCode: "P04", shift: "1º turno", goodQty: 1, scrapQty: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.production.approveInspection({ id: 0, result: "Conforme" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });

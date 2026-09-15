@@ -4,11 +4,17 @@ import {
   InsertCopilotMessage,
   InsertGovernanceDecision,
   InsertProductionOrder,
+  InsertProductionReport,
   InsertSimulationRun,
   InsertUser,
   copilotMessages,
   governanceDecisionAudits,
   governanceDecisions,
+  engineeringItems,
+  bomItems,
+  productionReports,
+  qualityInspections,
+  stampingOperations,
   materialLots,
   productionOrders,
   simulationRuns,
@@ -17,6 +23,14 @@ import {
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+
+export async function listEngineeringItems(ownerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(engineeringItems).where(eq(engineeringItems.ownerId, ownerId)).orderBy(desc(engineeringItems.updatedAt)); }
+export async function listBomItems(ownerId: number, productCode?: string) { const db = await getDb(); if (!db) return []; return db.select().from(bomItems).where(productCode ? and(eq(bomItems.ownerId, ownerId), eq(bomItems.productCode, productCode)) : eq(bomItems.ownerId, ownerId)); }
+export async function listStampingOperations(ownerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(stampingOperations).where(eq(stampingOperations.ownerId, ownerId)); }
+export async function listProductionReports(ownerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(productionReports).where(eq(productionReports.ownerId, ownerId)).orderBy(desc(productionReports.reportedAt)); }
+export async function createProductionReport(ownerId: number, input: Omit<InsertProductionReport, "id" | "ownerId">) { const db = await getDb(); if (!db) throw new Error("Database is not available"); const result = await db.insert(productionReports).values({ ...input, ownerId }); const rows = await db.select().from(productionReports).where(eq(productionReports.id, result[0].insertId as number)).limit(1); return rows[0]; }
+export async function listQualityInspections(ownerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(qualityInspections).where(eq(qualityInspections.ownerId, ownerId)).orderBy(desc(qualityInspections.inspectedAt)); }
+export async function approveQualityInspection(ownerId: number, id: number, approvedBy: string, result: "Conforme" | "Não conforme") { const db = await getDb(); if (!db) throw new Error("Database is not available"); await db.update(qualityInspections).set({ approvedBy, approvedAt: new Date(), result }).where(and(eq(qualityInspections.id, id), eq(qualityInspections.ownerId, ownerId))); const rows = await db.select().from(qualityInspections).where(and(eq(qualityInspections.id, id), eq(qualityInspections.ownerId, ownerId))).limit(1); return rows[0]; }
 
 export async function listProductionOrders(ownerId: number, search?: string) {
   const db = await getDb();
@@ -67,6 +81,29 @@ export async function bootstrapProduction(ownerId: number) {
       { ownerId, lotCode: "MP-2026-0912", material: "Fibra metálica de reforço", supplier: "MetalFiber Brasil", status: "Quarentena" },
       { ownerId, lotCode: "MP-2026-0910", material: "Resina fenólica", supplier: "ResinTech", status: "Liberado" },
       { ownerId, lotCode: "MP-2026-0908", material: "Grafite industrial", supplier: "Carbon Solutions", status: "Liberado" },
+    ]);
+  }
+  const existingEngineering = await db.select({ id: engineeringItems.id }).from(engineeringItems).where(eq(engineeringItems.ownerId, ownerId)).limit(1);
+  if (!existingEngineering.length) {
+    await db.insert(engineeringItems).values([
+      { ownerId, itemCode: "DWG-BP-AX-001", title: "Pastilha eixo dianteiro · desenho mestre", revision: "A", status: "Liberado", ownerName: "Eng. C. Artanio" },
+      { ownerId, itemCode: "ECO-2026-014", title: "Redução de ruído · composição de material", revision: "B", status: "Em aprovação", ownerName: "Eng. Mariana Alves" },
+      { ownerId, itemCode: "PF-PR-004", title: "Roteiro de cura · prensa CP-04", revision: "C", status: "Liberado", ownerName: "Eng. Rafael Lima" },
+    ]);
+    await db.insert(bomItems).values([
+      { ownerId, productCode: "BP-AX-001", componentCode: "MAT-RES-001", componentName: "Resina fenólica", quantity: "0,420", unit: "kg", revision: "A" },
+      { ownerId, productCode: "BP-AX-001", componentCode: "MAT-FIB-002", componentName: "Fibra metálica", quantity: "0,180", unit: "kg", revision: "A" },
+      { ownerId, productCode: "BP-AX-001", componentCode: "MAT-GRA-003", componentName: "Grafite industrial", quantity: "0,095", unit: "kg", revision: "A" },
+      { ownerId, productCode: "BP-AX-001", componentCode: "MAT-ABR-004", componentName: "Abrasivo cerâmico", quantity: "0,310", unit: "kg", revision: "A" },
+    ]);
+    await db.insert(stampingOperations).values([
+      { ownerId, operationCode: "EST-001", orderCode: "OP-2026-0915", machineCode: "PRENSA-P04", toolCode: "STP-AX-07", status: "Em execução", targetQty: 2400, completedQty: 1680 },
+      { ownerId, operationCode: "EST-002", orderCode: "OP-2026-0916", machineCode: "PRENSA-P02", toolCode: "STP-HT-03", status: "Planejada", targetQty: 1200, completedQty: 0 },
+    ]);
+    await db.insert(qualityInspections).values([
+      { ownerId, orderCode: "OP-2026-0915", characteristic: "Espessura", specification: "12,00 ± 0,15 mm", measuredValue: "11,98 mm", result: "Conforme", approvedBy: "Qualidade · Sistema", approvedAt: new Date() },
+      { ownerId, orderCode: "OP-2026-0915", characteristic: "Dureza Rockwell", specification: "85 ± 5 HRB", measuredValue: "87 HRB", result: "Aguardando" },
+      { ownerId, orderCode: "OP-2026-0916", characteristic: "Cisalhamento", specification: "≥ 1,5 MPa", measuredValue: "1,32 MPa", result: "Aguardando" },
     ]);
   }
   return { seeded: true };

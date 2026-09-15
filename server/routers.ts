@@ -15,6 +15,13 @@ import {
   createProductionOrder,
   bootstrapProduction,
   updateProductionOrderStatus,
+  listEngineeringItems,
+  listBomItems,
+  listStampingOperations,
+  listProductionReports,
+  createProductionReport,
+  listQualityInspections,
+  approveQualityInspection,
   updateGovernanceDecision,
 } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -106,6 +113,13 @@ export const appRouter = router({
     bootstrap: protectedProcedure.mutation(({ ctx }) => bootstrapProduction(ctx.user.id)),
     createOrder: protectedProcedure.input(z.object({ productCode: z.string().min(1).max(32), quantity: z.number().int().positive().max(1000000), customer: z.string().min(1).max(160), dueDate: z.coerce.date() })).mutation(({ ctx, input }) => createProductionOrder(ctx.user.id, input)),
     updateOrderStatus: protectedProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(["Planejada", "Em produção", "Em inspeção", "Concluída", "Quarentena"]) })).mutation(({ ctx, input }) => updateProductionOrderStatus(ctx.user.id, input.id, input.status)),
+    engineering: protectedProcedure.query(({ ctx }) => listEngineeringItems(ctx.user.id)),
+    bom: protectedProcedure.input(z.object({ productCode: z.string().max(32).optional() })).query(({ ctx, input }) => listBomItems(ctx.user.id, input.productCode)),
+    stamping: protectedProcedure.query(({ ctx }) => listStampingOperations(ctx.user.id)),
+    reports: protectedProcedure.query(({ ctx }) => listProductionReports(ctx.user.id)),
+    report: protectedProcedure.input(z.object({ orderCode: z.string().min(1).max(32), operatorName: z.string().min(1).max(120), machineCode: z.string().min(1).max(64), shift: z.enum(["1º turno", "2º turno", "3º turno"]), goodQty: z.number().int().min(0), scrapQty: z.number().int().min(0), notes: z.string().max(1000).optional() })).mutation(({ ctx, input }) => createProductionReport(ctx.user.id, input)),
+    inspections: protectedProcedure.query(({ ctx }) => listQualityInspections(ctx.user.id)),
+    approveInspection: protectedProcedure.input(z.object({ id: z.number().int().positive(), result: z.enum(["Conforme", "Não conforme"]) })).mutation(({ ctx, input }) => approveQualityInspection(ctx.user.id, input.id, ctx.user.name ?? "Qualidade", input.result)),
   }),
 });
 
