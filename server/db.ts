@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertCopilotMessage,
   InsertGovernanceDecision,
+  InsertEngineeringItem,
   InsertProductionOrder,
   InsertProductionReport,
   InsertSimulationRun,
@@ -25,6 +26,7 @@ import { ENV } from "./_core/env";
 let _db: ReturnType<typeof drizzle> | null = null;
 
 export async function listEngineeringItems(ownerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(engineeringItems).where(eq(engineeringItems.ownerId, ownerId)).orderBy(desc(engineeringItems.updatedAt)); }
+export async function createEngineeringItem(ownerId: number, input: Omit<InsertEngineeringItem, "id" | "ownerId" | "status">) { const db = await getDb(); if (!db) throw new Error("Database is not available"); const result = await db.insert(engineeringItems).values({ ...input, ownerId, status: "Em desenvolvimento" }); const rows = await db.select().from(engineeringItems).where(and(eq(engineeringItems.id, result[0].insertId as number), eq(engineeringItems.ownerId, ownerId))).limit(1); return rows[0]; }
 export async function listBomItems(ownerId: number, productCode?: string) { const db = await getDb(); if (!db) return []; return db.select().from(bomItems).where(productCode ? and(eq(bomItems.ownerId, ownerId), eq(bomItems.productCode, productCode)) : eq(bomItems.ownerId, ownerId)); }
 export async function listStampingOperations(ownerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(stampingOperations).where(eq(stampingOperations.ownerId, ownerId)); }
 export async function listProductionReports(ownerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(productionReports).where(eq(productionReports.ownerId, ownerId)).orderBy(desc(productionReports.reportedAt)); }

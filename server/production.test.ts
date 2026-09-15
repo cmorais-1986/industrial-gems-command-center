@@ -49,4 +49,11 @@ describe("integrated brake-pad production", () => {
     await expect(caller.production.report({ orderCode: "OP-1", operatorName: "", machineCode: "P04", shift: "1º turno", goodQty: 1, scrapQty: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.production.approveInspection({ id: 0, result: "Conforme" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+
+  it("validates new engineering part registration", async () => {
+    const publicCaller = appRouter.createCaller(context());
+    await expect(publicCaller.production.createEngineeringItem({ itemCode: "BP-NEW", title: "Peça", revision: "A", ownerName: "Engenharia" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    const caller = appRouter.createCaller(context(user));
+    await expect(caller.production.createEngineeringItem({ itemCode: "", title: "Peça", revision: "A", ownerName: "Engenharia" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });
